@@ -1,3 +1,8 @@
+---
+description: "Code that calls an LLM, and configuring or pointing an agent's tools."
+trigger: model_decision
+---
+
 # Building LLM and agent features
 
 Read this when the code you write calls an LLM, builds an agent, exposes tools to a model, or ingests retrieved content (RAG, MCP servers, tool-using assistants). Also when configuring an agent's own tools and servers, or pointing agentic tooling at a repository you did not write.

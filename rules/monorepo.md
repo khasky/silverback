@@ -1,3 +1,8 @@
+---
+description: "A repository holding several packages built together."
+trigger: model_decision
+---
+
 # Monorepos
 
 Read this when working in a repository that holds several packages, modules or services built together, in any ecosystem (JS/TS workspaces, Cargo workspaces, Go workspaces, Gradle multi-project, uv workspaces, or equivalent).

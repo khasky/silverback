@@ -1,3 +1,8 @@
+---
+description: "Building, styling or reviewing web UI."
+trigger: model_decision
+---
+
 # Frontend design and UI craft
 
 Read this when building, styling, or reviewing web UI: pages, components, dashboards. The craft and accessibility numbers hold for any UI; the CSS and DOM APIs are web-only.

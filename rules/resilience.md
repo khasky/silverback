@@ -1,3 +1,8 @@
+---
+description: "Calls to other services: timeouts, retries, circuit breakers."
+trigger: model_decision
+---
+
 # Cross-service resilience
 
 Read this when a service calls other services — HTTP/RPC clients, retries, timeouts, cross-service transactions, or deciding failure behavior under a slow or dead dependency.

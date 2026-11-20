@@ -1,3 +1,8 @@
+---
+description: "Writing, reviewing or cleaning up comments."
+trigger: model_decision
+---
+
 # Comment policy
 
 Read this when writing or reviewing comments, or cleaning up a file's comment style. The always-loaded core carries the baseline (names over comments; remaining comments short, only for non-obvious intent); this module covers what the core leaves out. A comment-only cleanup pass over existing files also reads `rules/comment-pass.md`: what such a pass never changes and how it proves it changed nothing.

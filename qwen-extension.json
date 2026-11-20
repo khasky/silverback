@@ -1,5 +1,27 @@
 {
   "name": "silverback",
   "version": "0.1.0",
-  "contextFileName": "AGENTS.md"
+  "contextFileName": "AGENTS.md",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [
+        { "type": "command", "command": "bash \"${extensionPath}/hooks/guard-switch.sh\"" },
+        { "type": "command", "command": "bash \"${extensionPath}/hooks/verify.sh\" prompt" }
+      ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/subagent.sh\"" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "run_shell_command", "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/guard.sh\"" }] },
+      { "matcher": "edit|write_file|notebook_edit", "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/guard-files.sh\"" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "edit|write_file|notebook_edit", "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/verify.sh\" edit" }] },
+      { "matcher": "run_shell_command", "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/verify.sh\" ran" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "bash \"${extensionPath}/hooks/verify.sh\" stop" }] }
+    ]
+  }
 }

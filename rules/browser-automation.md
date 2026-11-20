@@ -1,3 +1,8 @@
+---
+description: "Driving a live browser or testing an extension."
+trigger: model_decision
+---
+
 # Driving a real browser
 
 Read this when automating a live browser through any automation driver or a DevTools protocol session, or testing a browser extension. The traps below produce confident wrong readings rather than errors, which is what makes them expensive.

@@ -1,3 +1,8 @@
+---
+description: "CI workflows and release automation."
+trigger: model_decision
+---
+
 # CI/CD pipeline security
 
 Read this when writing or changing CI workflows, release automation, or anything that runs with repository credentials — on any CI platform.

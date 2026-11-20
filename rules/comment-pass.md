@@ -1,3 +1,8 @@
+---
+description: "A comment-only cleanup pass over existing files."
+trigger: model_decision
+---
+
 # Comment pass
 
 Read this when running a comment-only cleanup pass over existing files: what the pass must leave alone and how to prove it changed nothing but comments. The rules for the comment text itself are in `rules/code-comments.md`.

@@ -1,3 +1,8 @@
+---
+description: "Pre-commit, commit-msg or pre-push automation."
+trigger: model_decision
+---
+
 # Git hooks and pre-commit gates
 
 Read this when setting up or changing pre-commit, commit-msg or pre-push automation, with any hook manager.

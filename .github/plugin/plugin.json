@@ -1,0 +1,13 @@
+{
+  "name": "silverback",
+  "description": "The shared AGENTS.md ruleset for GitHub Copilot CLI, injected into every session by a sessionStart hook: boundaries, security, a verification gate before any completion claim, concise communication, commit conventions. Hooks block destructive commands, ask before a push, a recursive delete, a history rewrite or an edit to agent instruction files, and send back a turn that edited files and ran no check.",
+  "author": {
+    "name": "Khasky",
+    "url": "https://github.com/khasky"
+  },
+  "homepage": "https://github.com/khasky/silverback",
+  "repository": "https://github.com/khasky/silverback",
+  "license": "MIT",
+  "keywords": ["agents-md", "rules", "coding-standards", "verification", "security", "commits"],
+  "hooks": "hooks/copilot-hooks.json"
+}

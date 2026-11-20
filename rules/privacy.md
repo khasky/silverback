@@ -1,3 +1,8 @@
+---
+description: "Personal data, analytics or tracking scripts, session-recording SDKs."
+trigger: model_decision
+---
+
 # Personal data and retention
 
 Read this when code stores, copies, or deletes personal data (user deletion, retention policies, PII handling, data export), or when adding analytics, tracking scripts, ad pixels, or a session-recording or error-reporting SDK to a client. The engineering invariants hold under any privacy regime; a rule that depends on a jurisdiction names it, and the legal call stays the user's.

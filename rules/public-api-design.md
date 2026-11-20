@@ -1,3 +1,8 @@
+---
+description: "Designing or evolving an HTTP API for external clients."
+trigger: model_decision
+---
+
 # Public API design
 
 Read this when designing or evolving an HTTP API that external clients consume: versioning, pagination, idempotency, concurrency, deprecation. Pairs with `rules/api-contracts.md` (schemas and generated clients).

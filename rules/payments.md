@@ -1,3 +1,8 @@
+---
+description: "Integrating a payment provider."
+trigger: model_decision
+---
+
 # Payments and checkout
 
 Read this when integrating any payment provider: checkout, webhooks, fulfillment, refunds, subscriptions.

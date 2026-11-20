@@ -1,3 +1,8 @@
+---
+description: "Server or API code, and what a shipped client may hold."
+trigger: model_decision
+---
+
 # Backend and API security
 
 Read this when writing or reviewing server-side code (HTTP APIs, auth, database access) or the trust boundary between a server and the clients it ships. Scheduled and background jobs: `rules/jobs.md`.

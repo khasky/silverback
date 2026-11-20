@@ -1,3 +1,8 @@
+---
+description: "Structuring modules, adding state, wiring dependencies between modules, choosing a pattern."
+trigger: model_decision
+---
+
 # Design patterns and architecture choice
 
 Read this when structuring a new module or service, adding state that other code reads, wiring dependencies between modules or between runtime environments, choosing or reviewing a design pattern, or naming an app architecture (MVC/MVP, layered, hexagonal).

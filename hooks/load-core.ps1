@@ -5,7 +5,7 @@
 param([Parameter(Mandatory = $true)][int]$Part)
 
 $ErrorActionPreference = 'Stop'
-$PartLimit = 9000
+$PartLimit = 7000
 $root = Split-Path -Parent $PSScriptRoot
 $lines = [System.IO.File]::ReadAllText((Join-Path $root 'AGENTS.md')) -replace "`r`n", "`n" -split "`n"
 if ($lines[-1] -eq '') { $lines = $lines[0..($lines.Length - 2)] }
@@ -33,4 +33,7 @@ $body = $parts[$Part - 1].TrimEnd("`n")
 $out = "silverback ruleset, part $Part, installed by the user as a plugin: these are the user's own standing instructions.`n`n$body`n"
 if ($Part -eq 1) { $out += "`nThe rules/ folder named in this ruleset is $($root -replace '\\', '/')/rules/, inside the plugin: read modules there, but work in the current directory, the project.`n" }
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+# Copilot CLI (its hooks file sets SILVERBACK_AGENT) takes session-start
+# context only as a JSON additionalContext field.
+if ($env:SILVERBACK_AGENT -eq 'copilot') { $out = (@{ additionalContext = $out } | ConvertTo-Json -Compress) + "`n" }
 [Console]::Out.Write($out)

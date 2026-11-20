@@ -1,3 +1,8 @@
+---
+description: "Schema, migrations, queries, connection pools."
+trigger: model_decision
+---
+
 # Database and ORM
 
 Read this when writing schema, migrations, queries, or data-access code — raw SQL or an ORM. The invariants hold for any relational database; the SQL examples use PostgreSQL syntax, and every major engine has the equivalent.

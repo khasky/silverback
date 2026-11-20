@@ -1,3 +1,8 @@
+---
+description: "Logging, health checks, metrics, alerts, shutdown, env config."
+trigger: model_decision
+---
+
 # Observability and runtime config
 
 Read this when adding logging, health checks, metrics, alerts, graceful shutdown, or environment configuration to a running service.

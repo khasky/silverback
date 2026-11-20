@@ -1,3 +1,8 @@
+---
+description: "Rate limiters and quotas."
+trigger: model_decision
+---
+
 # Rate limiting and quotas
 
 Read this when designing or reviewing a rate limiter, quota, or capacity control — the algorithm, where the counter lives, and what happens when the limiter itself fails.

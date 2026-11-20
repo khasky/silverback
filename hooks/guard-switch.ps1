@@ -24,37 +24,51 @@ if ($prompt -cmatch $envelope) {
 
 $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
 $switchFile = Join-Path $userHome '.silverback/guard'
+$switches = 'push', 'delete', 'history', 'files', 'verify'
+# A switch is on unless the file holds name=<state>.
 function Get-Switch([string]$name) {
-  if ((Test-Path -LiteralPath $switchFile) -and @(Get-Content -LiteralPath $switchFile) -contains "$name=off") { 'off' } else { 'on' }
+  $found = @()
+  if (Test-Path -LiteralPath $switchFile) { $found = @(Get-Content -LiteralPath $switchFile | Where-Object { $_ -like "$name=*" }) }
+  if ($found.Count) { $found[-1].Substring($name.Length + 1) } else { 'on' }
 }
 
 function Get-Label([string]$name) {
-  if ($name -eq 'push') { 'push' } else { 'recursive-delete' }
+  switch ($name) {
+    'push' { 'push prompt' }
+    'delete' { 'recursive-delete prompt' }
+    'history' { 'history-rewrite prompt' }
+    'files' { 'protected-file prompt' }
+    'verify' { 'verification check' }
+  }
 }
-# One line per switch: its state and the command that flips it.
+# One line per switch: its state and the command that changes it.
 function Get-Line([string]$name) {
   $now = Get-Switch $name
-  $flip = if ($now -eq 'on') { 'off' } else { 'on' }
-  "$(Get-Label $name) prompt: $now (/silverback:guard $name $flip)"
+  $flip = if ($name -eq 'verify') { 'on|observe|off' } elseif ($now -eq 'on') { 'off' } else { 'on' }
+  "$(Get-Label $name): $now (/silverback:guard $name $flip)"
 }
 
 $words = @($argText.ToLowerInvariant() -split '\s+' | Where-Object { $_ })
 $title = 'silverback guard:'
-if ($words.Count -eq 2 -and $words[0] -match '^(push|delete)$' -and $words[1] -match '^(on|off)$') {
+$valid = $words.Count -eq 2 -and (($words[0] -match '^(push|delete|history|files)$' -and $words[1] -match '^(on|off)$') -or
+  ($words[0] -eq 'verify' -and $words[1] -match '^(on|observe|off)$'))
+if ($valid) {
   if ((Get-Switch $words[0]) -eq $words[1]) {
-    $title += " $(Get-Label $words[0]) prompt is already $($words[1])."
+    $title += " $(Get-Label $words[0]) is already $($words[1])."
   } else {
     $null = New-Item -ItemType Directory -Force -Path (Split-Path $switchFile)
     $lines = @()
-    if (Test-Path -LiteralPath $switchFile) { $lines = @(Get-Content -LiteralPath $switchFile | Where-Object { $_ -ne "$($words[0])=off" }) }
-    if ($words[1] -eq 'off') { $lines += "$($words[0])=off" }
+    if (Test-Path -LiteralPath $switchFile) { $lines = @(Get-Content -LiteralPath $switchFile | Where-Object { $_ -notlike "$($words[0])=*" }) }
+    if ($words[1] -ne 'on') { $lines += "$($words[0])=$($words[1])" }
     [IO.File]::WriteAllText("$switchFile.tmp", (($lines | ForEach-Object { "$_`n" }) -join ''))
     Move-Item -Force -LiteralPath "$switchFile.tmp" -Destination $switchFile
-    $title += " $(Get-Label $words[0]) prompt turned $($words[1])."
+    $title += " $(Get-Label $words[0]) turned $($words[1])."
   }
 } elseif ($words.Count -ne 0) {
-  $title += ' usage: /silverback:guard [push|delete] [on|off].'
+  $title += ' usage: /silverback:guard [push|delete|history|files] [on|off], /silverback:guard verify [on|observe|off].'
 }
 
-[Console]::Out.WriteLine('{"decision":"block","reason":"' + $title + '\n' + (Get-Line 'push') + '\n' + (Get-Line 'delete') + '"}')
+$reason = $title
+foreach ($name in $switches) { $reason += '\n' + (Get-Line $name) }
+[Console]::Out.WriteLine('{"decision":"block","reason":"' + $reason + '"}')
 exit 0

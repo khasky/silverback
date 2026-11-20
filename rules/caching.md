@@ -1,3 +1,8 @@
+---
+description: "Adding or reviewing a cache, or clearing a stale one."
+trigger: model_decision
+---
+
 # Caching
 
 Read this when adding or reviewing a cache (in-process, a shared cache server, or a cached computation), or chasing data that stays stale after a change. The rules hold for any cache. HTTP/CDN response caching lives in `rules/public-api-design.md`.

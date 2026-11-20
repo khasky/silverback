@@ -1,3 +1,8 @@
+---
+description: "Spawning a subagent or writing an agent definition."
+trigger: model_decision
+---
+
 # Subagents
 
 Read this when spawning a subagent or writing a reusable agent definition: which model tier the job takes, how to pin it, and when to escalate.

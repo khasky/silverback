@@ -14,5 +14,7 @@ foreach ($line in $lines) {
   if ($keep) { $text += $line + "`n" }
 }
 $out = @{ hookSpecificOutput = @{ hookEventName = 'SubagentStart'; additionalContext = $text } } | ConvertTo-Json -Compress
+# Copilot CLI (its hooks file sets SILVERBACK_AGENT) reads a top-level field.
+if ($env:SILVERBACK_AGENT -eq 'copilot') { $out = @{ additionalContext = $text } | ConvertTo-Json -Compress }
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::Out.WriteLine($out)

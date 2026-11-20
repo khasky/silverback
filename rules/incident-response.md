@@ -1,3 +1,8 @@
+---
+description: "A live production incident."
+trigger: model_decision
+---
+
 # Live incident response
 
 Read this when a production system is currently broken, degraded, or suspected compromised — before the postmortem, while the fire is burning.

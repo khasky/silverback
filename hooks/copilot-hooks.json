@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/load-core.sh\" 1",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/load-core.ps1\" 1",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      },
+      {
+        "type": "command",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/load-core.sh\" 2",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/load-core.ps1\" 2",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ],
+    "subagentStart": [
+      {
+        "type": "command",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/subagent.sh\"",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/subagent.ps1\"",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "matcher": "Bash|PowerShell|bash|powershell",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/guard.sh\"",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/guard.ps1\"",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      },
+      {
+        "type": "command",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|edit|create|apply_patch",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/guard-files.sh\"",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/guard-files.ps1\"",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|edit|create|apply_patch",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/verify.sh\" edit",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/verify.ps1\" edit",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      },
+      {
+        "type": "command",
+        "matcher": "Bash|PowerShell|bash|powershell",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/verify.sh\" ran",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/verify.ps1\" ran",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/verify.sh\" prompt",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/verify.ps1\" prompt",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "bash": "bash \"${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/hooks/verify.sh\" stop",
+        "powershell": "& \"$(if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { $env:CLAUDE_PLUGIN_ROOT })/hooks/verify.ps1\" stop",
+        "env": { "SILVERBACK_AGENT": "copilot" }
+      }
+    ]
+  }
+}

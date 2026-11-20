@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "silverback",
-  "description": "The shared AGENTS.md ruleset, injected into every session by a SessionStart hook: boundaries, security, a verification gate before any completion claim, the lazy-senior-dev coding ladder, terse communication, commit conventions. On-demand modules in rules/ extend it across the stack and are read only when the task matches.",
+  "description": "The shared AGENTS.md ruleset, injected into every session by a SessionStart hook: boundaries, security, a verification gate before any completion claim, the lazy-senior-dev coding ladder, concise communication, commit conventions. On-demand modules in rules/ extend it across the stack and are read only when the task matches. Hooks block destructive commands, ask before a push, a recursive delete, a history rewrite or an edit to agent instruction files, and send back a turn that edited files and ran no check.",
   "author": {
     "name": "Khasky",
     "url": "https://github.com/khasky"

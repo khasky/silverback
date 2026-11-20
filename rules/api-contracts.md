@@ -1,3 +1,8 @@
+---
+description: "Machine-readable API schemas, contract packages, generated clients."
+trigger: model_decision
+---
+
 # API contracts and generated clients
 
 Read this when the repo has a machine-readable API schema (OpenAPI or similar), a contract package, or generated API clients — or before hand-writing types for API data.

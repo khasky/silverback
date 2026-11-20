@@ -1,3 +1,8 @@
+---
+description: "A dedicated refactor, cleanup, rewrite or migration."
+trigger: model_decision
+---
+
 # Refactoring and cleanup tasks
 
 Read this when the task is a dedicated refactor, cleanup, rewrite or migration, or an "improve this code" pass.

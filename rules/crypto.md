@@ -1,3 +1,8 @@
+---
+description: "Hashing, encryption, signing, tokens, keys."
+trigger: model_decision
+---
+
 # Applied cryptography
 
 Read this when code hashes, encrypts, signs, or generates anything security-bearing: passwords, tokens, sessions, signatures, encrypted fields.

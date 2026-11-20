@@ -3,6 +3,14 @@
   "description": "Shared AGENTS.md ruleset for Kimi Code CLI",
   "license": "MIT",
   "systemPromptPath": "./AGENTS.md",
+  "hooks": [
+    { "event": "PreToolUse", "matcher": "^Bash$", "command": "bash ./hooks/guard.sh", "timeout": 10 },
+    { "event": "PreToolUse", "matcher": "^(Edit|Write)$", "command": "bash ./hooks/guard-files.sh", "timeout": 10 },
+    { "event": "PostToolUse", "matcher": "^(Edit|Write)$", "command": "bash ./hooks/verify.sh edit", "timeout": 10 },
+    { "event": "PostToolUse", "matcher": "^Bash$", "command": "bash ./hooks/verify.sh ran", "timeout": 10 },
+    { "event": "UserPromptSubmit", "command": "bash ./hooks/verify.sh prompt", "timeout": 10 },
+    { "event": "Stop", "command": "bash ./hooks/verify.sh stop", "timeout": 10 }
+  ],
   "interface": {
     "displayName": "Silverback",
     "shortDescription": "Shared rules for coding agents"

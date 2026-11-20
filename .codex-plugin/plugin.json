@@ -1,6 +1,6 @@
 {
   "name": "silverback",
-  "description": "The shared AGENTS.md ruleset for Codex: boundaries, security, a verification gate before any completion claim, terse communication and commit conventions, loaded at session start, with hooks that block force-pushes, skipped git hooks, environment dumps and assistant commit trailers.",
+  "description": "The shared AGENTS.md ruleset for Codex: boundaries, security, a verification gate before any completion claim, concise communication and commit conventions, loaded at session start, with hooks that block force-pushes, discarded work, skipped git hooks and environment dumps, and deny a push, a recursive delete, a history rewrite or an edit to agent instruction files until the user turns that check off.",
   "author": {
     "name": "Khasky",
     "url": "https://github.com/khasky"

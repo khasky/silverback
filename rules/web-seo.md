@@ -1,3 +1,8 @@
+---
+description: "Building or auditing public web pages."
+trigger: model_decision
+---
+
 # Web SEO essentials
 
 Read this when building, modifying, or auditing public-facing web pages.

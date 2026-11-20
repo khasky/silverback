@@ -1,3 +1,8 @@
+---
+description: "Any commit message, PR title or branch name."
+trigger: model_decision
+---
+
 # Commit message prose
 
 Read this when writing any commit message, PR title or branch name, planning or rebuilding a commit series, or reviewing commit messages. Every rule here is style-agnostic: whether the repo dresses subjects as `type(scope): summary` or as a plain capitalized sentence changes nothing below, and the same body text serves both.

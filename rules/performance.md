@@ -1,3 +1,8 @@
+---
+description: "Making code faster or diagnosing latency."
+trigger: model_decision
+---
+
 # Performance fundamentals
 
 Read this when writing or reviewing performance-sensitive code, or when asked to make something faster or to explain rising latency — any language, any stack. Domain-specific hot paths live in their own modules: queries and indexes in `rules/database.md`, caches in `rules/caching.md`, animation in `rules/frontend-design.md`.

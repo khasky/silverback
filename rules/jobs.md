@@ -1,3 +1,8 @@
+---
+description: "Cron, scheduled and batch work."
+trigger: model_decision
+---
+
 # Scheduled jobs and batch work
 
 Read this when writing cron jobs, scheduled tasks, or batch processing — anything that runs on a timer rather than on a request or a message.

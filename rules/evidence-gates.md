@@ -1,3 +1,8 @@
+---
+description: "Turning a verification rule into an enforced gate, or writing an instruction that must hold on every run."
+trigger: model_decision
+---
+
 # Evidence gates
 
 Read this when turning a verification rule into an enforced gate, when writing an instruction that must hold on every run, or when a completion claim has to survive review by someone who was not watching it being made.

@@ -1,3 +1,8 @@
+---
+description: "Shell scripts beyond a one-liner."
+trigger: model_decision
+---
+
 # Shell scripts
 
 Read this when writing or editing a shell script — bash/sh or PowerShell — anything beyond a single command.

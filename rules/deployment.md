@@ -1,3 +1,8 @@
+---
+description: "Shipping to a running environment, release branches, build artifacts, infrastructure definitions."
+trigger: model_decision
+---
+
 # Deployment and release
 
 Read this when shipping a change to a running environment or to a release or support branch: rollout strategy, rollbacks, feature flags, migration ordering, build artifacts, runtime hardening, and infrastructure definitions with their state and plans.

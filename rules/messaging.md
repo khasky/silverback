@@ -1,3 +1,8 @@
+---
+description: "Queues, event streams, pub/sub, webhooks."
+trigger: model_decision
+---
+
 # Events, queues, and webhooks
 
 Read this when building async messaging: message queues, event streams, pub/sub, or inbound/outbound webhooks.

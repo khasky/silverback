@@ -1,3 +1,8 @@
+---
+description: "A fix failed twice, the same error keeps returning, or a regression needs locating."
+trigger: model_decision
+---
+
 # Debug escalation ladder
 
 Read this when a fix has failed twice, the same error keeps returning, a debugging session is going in circles, or a regression needs locating. `rules/workflow.md` carries the short form; this is the full ladder.

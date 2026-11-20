@@ -1,3 +1,8 @@
+---
+description: "A plan or spec as the deliverable; a decision record."
+trigger: model_decision
+---
+
 # Planning before implementation
 
 Read this when the task is to produce a plan or spec rather than the change itself — a design handed to someone else, an approach agreed before editing, or an open-ended request that has to be pinned down first. Also when writing or updating an architecture decision record.

@@ -1,3 +1,8 @@
+---
+description: "Adding, upgrading or auditing packages, agent skills, MCP servers or plugins, or a lockfile conflict."
+trigger: model_decision
+---
+
 # Dependencies and supply chain
 
 Read this when adding, upgrading, or auditing third-party packages, configuring an update bot, resolving a lockfile conflict, or enabling an agent skill, MCP server, plugin or hook, in any ecosystem (npm, PyPI, Go modules, Cargo, Maven).

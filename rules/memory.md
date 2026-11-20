@@ -1,3 +1,8 @@
+---
+description: "The agent has persistent memory."
+trigger: model_decision
+---
+
 # Agent memory hygiene
 
 Read this when the agent has persistent memory (native or via a memory tool).

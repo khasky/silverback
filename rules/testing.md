@@ -1,3 +1,8 @@
+---
+description: "Writing or restructuring tests."
+trigger: model_decision
+---
+
 # Testing strategy
 
 Read this when writing or restructuring tests, or deciding what kind of test a change needs.

@@ -1,3 +1,8 @@
+---
+description: "Heavy builds, suites or parallel work on a machine other sessions share."
+trigger: model_decision
+---
+
 # Shared machine
 
 Read this when about to run something heavy (a full build, a test suite, containers, parallel subagents, a browser-driven run) or to stop, clean up after or spawn processes, servers or browsers on a machine other agent sessions may share.

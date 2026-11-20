@@ -34,9 +34,10 @@ def read(path: str) -> str:
 
 
 def tracked_markdown() -> list[str]:
-    out = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, check=True,
-                         capture_output=True, text=True).stdout
-    return out.split()
+    # Untracked files count too, so a new file is checked before it is added.
+    out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.md"],
+                         cwd=ROOT, check=True, capture_output=True, text=True).stdout
+    return sorted({path for path in out.split() if (ROOT / path).is_file()})
 
 
 def modules() -> list[str]:
@@ -183,11 +184,39 @@ def modules_under_word_limit() -> list[str]:
     return found
 
 
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n\n", re.DOTALL)
+
+
 def modules_open_with_trigger() -> list[str]:
-    return [f"{path}: missing 'Read this when' trigger line in the first 5 lines"
+    return [f"{path}: missing 'Read this when' trigger line in the first 5 lines after the frontmatter"
             for path in modules()
             if not any(line.startswith("Read this when ")
-                       for line in read(path).splitlines()[:5])]
+                       for line in FRONTMATTER.sub("", read(path).replace("\r\n", "\n")).splitlines()[:5])]
+
+
+def modules_carry_frontmatter_matching_the_index() -> list[str]:
+    # The frontmatter is what a rules engine (trigger: model_decision) routes
+    # on; the index line is what an agent reading
+    # rules/INDEX.md routes on. Two texts for one trigger drift, so they match.
+    index = dict(re.findall(r"^- `(rules/[a-z0-9-]+\.md)`: (.+)$", read(INDEX_FILE), re.M))
+    found = []
+    for path in modules():
+        match = FRONTMATTER.match(read(path).replace("\r\n", "\n"))
+        if not match:
+            found.append(f"{path}: no frontmatter (description, trigger: model_decision)")
+            continue
+        fields = dict(line.split(": ", 1) for line in match.group(1).splitlines() if ": " in line)
+        if fields.get("trigger") != "model_decision":
+            found.append(f"{path}: frontmatter trigger is {fields.get('trigger')!r}, not model_decision")
+        try:
+            description = json.loads(fields.get("description", "null"))
+        except ValueError:
+            description = None
+        entry = index.get(path)
+        if not description or not entry or description != entry[0].upper() + entry[1:]:
+            found.append(f"{path}: frontmatter description {description!r} differs from its "
+                         f"{INDEX_FILE} line {entry!r}")
+    return found
 
 
 def llms_in_sync() -> list[str]:
@@ -335,10 +364,11 @@ def plugin_manifests_resolve() -> list[str]:
         if manifest.get("contextFileName") != CORE:
             found.append(f"{source} loads {manifest.get('contextFileName')!r}, not {CORE}")
     # A root plugin.json makes Antigravity, Cursor and Copilot CLI read the repo
-    # as an Agent Plugin; Antigravity would then load every rules/ module as an
-    # always-on rule, the cost the on-demand index exists to avoid.
+    # as an Agent Plugin in a format nobody here has tested: Copilot CLI would
+    # pick it over .claude-plugin/plugin.json, and Antigravity would load
+    # rules/ with whatever its rules engine makes of the frontmatter.
     if (ROOT / "plugin.json").exists():
-        found.append("plugin.json exists - Antigravity would load every rules/ module as an always-on rule")
+        found.append("plugin.json exists - Antigravity, Cursor and Copilot CLI would read the repo as an untested Agent Plugin")
 
     hooks = plugin_hooks()
     if not any("load-core.sh" in hook.get("command", "") for hook in hooks):
@@ -359,6 +389,21 @@ def plugin_manifests_resolve() -> list[str]:
     for path in sorted(referenced):
         if not (ROOT / path).exists():
             found.append(f"{HOOKS_FILE} reads {path}, which is not in the repository")
+
+    # Copilot CLI, Qwen Code and Kimi Code wire the same scripts from their own
+    # files; a script named there that moved fails as silently.
+    copilot = json.loads((ROOT / ".github" / "plugin" / "plugin.json").read_text(encoding="utf-8"))
+    if copilot.get("name") != "silverback":
+        found.append(f".github/plugin/plugin.json name is {copilot.get('name')!r}")
+    for source in (copilot.get("hooks", ""), "qwen-extension.json", "kimi.plugin.json"):
+        if not (ROOT / source).is_file():
+            found.append(f"hooks file {source!r} is missing")
+            continue
+        text = (ROOT / source).read_text(encoding="utf-8")
+        json.loads(text)
+        for path in sorted(set(re.findall(r"hooks/[a-z-]+\.(?:sh|ps1)", text))):
+            if not (ROOT / path).is_file():
+                found.append(f"{source} runs {path}, which is not in the repository")
     return found
 
 
@@ -489,6 +534,41 @@ GUARD_CASES = [
     ("cat \"$HOME/.silverback/guard\"", True),
     ("cd /d/repos/github/khasky/silverback", False),
     ("git clone https://github.com/khasky/silverback.git", False),
+    ("python -c \"import os; print(os.environ)\"", True),
+    ("node -e \"console.log(process.env)\"", True),
+    ("python -c \"import os; print(os.environ.get('HOME'))\"", False),
+    ("node -e \"console.log(process.env.NODE_ENV)\"", False),
+    ("cat .env", True),
+    ("Get-Content .env.local", True),
+    ("cat ~/.aws/credentials", True),
+    ("cat .env.example", False),
+    ("cut -d= -f1 .env", False),
+    ("cat package.json", False),
+    ("gh auth token", True),
+    ("gh auth status", False),
+    ("dd if=/dev/zero of=/dev/sda", True),
+    ("dd if=in.img of=out.img", False),
+    ("git checkout -- .", True),
+    ("git checkout .", True),
+    ("git checkout -f main", True),
+    ("git restore .", True),
+    ("git stash drop", True),
+    ("git checkout -b feature", False),
+    ("git checkout main -- src/app.py", False),
+    ("git restore --staged .", False),
+    ("git restore src/app.py", False),
+    ("git stash pop", False),
+    ("git push --force origin main", True),
+    ("git push -f", True),
+    ("git push --force-with-lease", True),
+    ("git push origin :main", True),
+    ("git push --delete origin feature", True),
+    ("git push origin +main", True),
+    ("git filter-branch --all", True),
+    ("git commit -n -m x", True),
+    ("HUSKY=0 git commit -m x", True),
+    ("git commit -am x", False),
+    ("git commit --no-edit", False),
 ]
 
 
@@ -498,9 +578,8 @@ GUARD_CASES = [
 # commit, a human co-author, a single-file delete and a git call that only
 # reads do not.
 GUARD_ASK_CASES = [
-    ("git push --force origin main", True),
-    ("git push -f", True),
     ("git push origin main", True),
+    ("git push -u origin HEAD:feature", True),
     ("git push --follow-tags", True),
     ("git push", True),
     ("git pushover", False),
@@ -528,6 +607,25 @@ GUARD_ASK_CASES = [
     ("Remove-Item -Force .\\out.log", False),
     ("git rm -r --cached dist", False),
     ("ls -R", False),
+    ("find . -name '*.pyc' -delete", True),
+    ("find . -name '*.pyc'", False),
+    ("git commit --amend -m x", True),
+    ("git rebase -i HEAD~3", True),
+    ("git rebase --continue", False),
+    ("git pull --rebase", False),
+    ("git branch -D feature", True),
+    ("git branch -d feature", False),
+]
+
+
+# Codex sends a turn_id and runs a call it was asked about anyway, so there
+# every ask becomes a deny that names the switch turning the rule off.
+GUARD_CODEX_CASES = [
+    ("git push origin main", "deny"),
+    ("rm -rf node_modules dist", "deny"),
+    ("git commit --amend -m x", "deny"),
+    ("git status", None),
+    ("git reset --hard", "block"),
 ]
 
 
@@ -554,6 +652,13 @@ def plugin_guard_blocks_what_it_names() -> list[str]:
         cases += [(raw, f"raw payload {raw[:40]!r}", False, expect_ask) for raw, expect_ask in GUARD_RAW_CASES]
         env = scratch_home(pathlib.Path(scratch) / "home")
         for runtime in runtimes:
+            for command, expect in GUARD_CODEX_CASES:
+                run = run_hook(runtime, root, "guard", [], json.dumps(
+                    {"tool_name": "Bash", "turn_id": "t", "tool_input": {"command": command}}), env)
+                got = "block" if run.returncode == 2 else (json.loads(run.stdout)["hookSpecificOutput"][
+                    "permissionDecision"] if run.stdout.strip() else None)
+                if got != expect:
+                    found.append(f"{runtime[0]} guard answered {got!r} to {command!r} from Codex, expected {expect!r}")
             for payload, label, expect_block, expect_ask in cases:
                 run = run_hook(runtime, root, "guard", [], payload, env)
                 if run.returncode not in (0, 2):
@@ -571,9 +676,11 @@ def plugin_guard_blocks_what_it_names() -> list[str]:
     return found
 
 
-# Claude Code keeps a hook's output inline only below a size limit and shows a
-# longer one as a short preview plus a file path, so the core goes out in parts.
-HOOK_OUTPUT_LIMIT = 9500
+# Claude Code keeps a hook's output inline only up to 10,000 characters and
+# Codex up to 2,500 tokens by default; past that each shows a short preview plus
+# a file path, so the core goes out in parts. 7,500 characters is 2,500 tokens
+# at three characters a token, below what English prose with code spans takes.
+HOOK_OUTPUT_LIMIT = 7500
 
 
 def plugin_loads_whole_core() -> list[str]:
@@ -627,14 +734,18 @@ def plugin_loads_whole_core() -> list[str]:
 SUBAGENT_SECTIONS = ("## Boundaries", "## Security", "## Verification")
 
 
-def guard_reply(push: str, delete: str, news: str = "") -> str:
+def guard_reply(push: str, delete: str, news: str = "", history: str = "on", files: str = "on",
+                verify: str = "on") -> str:
     # The /silverback:guard answer: what changed, if anything, then each
-    # switch with the command that flips it.
+    # switch with the command that changes it.
     flip = {"on": "off", "off": "on"}
     return "\n".join([
         "silverback guard:" + (f" {news}" if news else ""),
         f"push prompt: {push} (/silverback:guard push {flip[push]})",
         f"recursive-delete prompt: {delete} (/silverback:guard delete {flip[delete]})",
+        f"history-rewrite prompt: {history} (/silverback:guard history {flip[history]})",
+        f"protected-file prompt: {files} (/silverback:guard files {flip[files]})",
+        f"verification check: {verify} (/silverback:guard verify on|observe|off)",
     ])
 
 
@@ -650,7 +761,8 @@ GUARD_SWITCH_STEPS = [
     ("prompt", "/guard push off", None),
     ("command", "git push", True),
     ("prompt", "/silverback:guard push off", guard_reply("off", "on", "push prompt turned off.")),
-    ("command", "git push --force origin main", False),
+    ("command", "git push origin main", False),
+    ("command", "git push --force origin main", None),
     ("command", "rm -rf build", True),
     ("command", "git push --no-verify", None),
     ("prompt", "/silverback:guard delete off",
@@ -661,6 +773,19 @@ GUARD_SWITCH_STEPS = [
     ("command", "git commit -m \"fix\n\nCo-authored-by: Codex <codex@openai.com>\"", True),
     ("prompt", "/silverback:guard delete off",
      guard_reply("off", "off", "recursive-delete prompt is already off.")),
+    ("prompt", "/silverback:guard history off",
+     guard_reply("off", "off", "history-rewrite prompt turned off.", history="off")),
+    ("command", "git commit --amend -m x", False),
+    ("prompt", "/silverback:guard history on",
+     guard_reply("off", "off", "history-rewrite prompt turned on.")),
+    ("command", "git commit --amend -m x", True),
+    ("prompt", "/silverback:guard verify observe",
+     guard_reply("off", "off", "verification check turned observe.", verify="observe")),
+    ("prompt", "/silverback:guard verify maybe",
+     guard_reply("off", "off", "usage: /silverback:guard [push|delete|history|files] [on|off], "
+                 "/silverback:guard verify [on|observe|off].", verify="observe")),
+    ("prompt", "/silverback:guard verify on",
+     guard_reply("off", "off", "verification check turned on.")),
     ("prompt", "<command-message>silverback:guard</command-message>\n"
                "<command-name>/silverback:guard</command-name>\n"
                "<command-args>push on</command-args>", guard_reply("on", "off", "push prompt turned on.")),
@@ -671,7 +796,8 @@ GUARD_SWITCH_STEPS = [
     ("prompt", "/silverback:guard Delete ON", guard_reply("on", "on", "recursive-delete prompt turned on.")),
     ("command", "rm -r build", True),
     ("prompt", "/silverback:guard push maybe",
-     guard_reply("on", "on", "usage: /silverback:guard [push|delete] [on|off].")),
+     guard_reply("on", "on", "usage: /silverback:guard [push|delete|history|files] [on|off], "
+                 "/silverback:guard verify [on|observe|off].")),
     ("command", "git push", True),
     ("prompt", "/silverback:guardian", None),
     ("prompt", "please run /silverback:guard push off", None),
@@ -753,6 +879,141 @@ def plugin_subagent_hook_carries_the_hard_rules() -> list[str]:
     return found
 
 
+# Each case is an edit tool call and the decision the file guard must give:
+# "ask" in Claude Code, "deny" from Codex (a turn_id in the payload), None for
+# an ordinary file.
+GUARD_FILE_CASES = [
+    ({"tool_name": "Write", "tool_input": {"file_path": "D:\\repo\\AGENTS.md", "content": "x"}}, "ask"),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/CLAUDE.md"}}, "ask"),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/.claude/settings.json"}}, "ask"),
+    ({"tool_name": "Write", "tool_input": {"file_path": "/home/u/.claude/projects/p/memory/MEMORY.md"}}, "ask"),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/.github/workflows/ci.yml"}}, "ask"),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/.gitignore"}}, "ask"),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/src/app.py"}}, None),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/docs/agents.md.bak"}}, None),
+    ({"tool_name": "Edit", "tool_input": {"file_path": "/home/u/repo/rules/workflow.md"}}, None),
+    ({"tool_name": "apply_patch", "turn_id": "t", "tool_input": {
+        "command": "*** Begin Patch\n*** Update File: D:/repo/AGENTS.md\n+x\n*** End Patch"}}, "deny"),
+    ({"tool_name": "apply_patch", "turn_id": "t", "tool_input": {
+        "command": "*** Begin Patch\n*** Add File: D:/repo/src/a.py\n+x\n*** End Patch"}}, None),
+]
+
+
+def plugin_file_guard_asks_about_constraint_files() -> list[str]:
+    runtimes, found = hook_runtimes()
+    with tempfile.TemporaryDirectory() as scratch:
+        root = plugin_copy(scratch)
+        env = scratch_home(pathlib.Path(scratch) / "home")
+        for runtime in runtimes:
+            for payload, expect in GUARD_FILE_CASES:
+                run = run_hook(runtime, root, "guard-files", [], json.dumps(payload), env)
+                got = (json.loads(run.stdout)["hookSpecificOutput"]["permissionDecision"]
+                       if run.returncode == 0 and run.stdout.strip() else None)
+                if run.returncode or got != expect:
+                    target = payload["tool_input"].get("file_path") or payload["tool_input"]["command"][:60]
+                    found.append(f"{runtime[0]} file guard answered {got!r} (exit {run.returncode}) "
+                                 f"to {payload['tool_name']} {target!r}, expected {expect!r}")
+            (pathlib.Path(scratch) / "home" / ".silverback").mkdir(exist_ok=True)
+            (pathlib.Path(scratch) / "home" / ".silverback" / "guard").write_text("files=off\n", encoding="utf-8")
+            run = run_hook(runtime, root, "guard-files", [], json.dumps(GUARD_FILE_CASES[0][0]), env)
+            if run.stdout.strip():
+                found.append(f"{runtime[0]} file guard still asks with files=off")
+            (pathlib.Path(scratch) / "home" / ".silverback" / "guard").unlink()
+    return found
+
+
+# One session through the verification check, in order: (event, payload
+# extras, whether the Stop step must send the turn back). A switch file line
+# applies from its step on.
+VERIFY_STEPS = [
+    ("edit", {}, None),
+    ("stop", {}, True),
+    ("stop", {}, False),
+    ("edit", {}, None),
+    ("ran", {}, None),
+    ("stop", {}, False),
+    ("edit", {}, None),
+    ("stop", {"stop_hook_active": True}, False),
+    ("edit", {}, None),
+    ("prompt", {}, None),
+    ("stop", {}, False),
+    ("switch", "verify=observe", None),
+    ("edit", {}, None),
+    ("stop", {}, False),
+    ("switch", "verify=off", None),
+    ("edit", {}, None),
+    ("stop", {}, False),
+]
+
+
+def plugin_verify_check_sends_back_unchecked_edits() -> list[str]:
+    runtimes, found = hook_runtimes()
+    with tempfile.TemporaryDirectory() as scratch:
+        root = plugin_copy(scratch)
+        for runtime in runtimes:
+            home = pathlib.Path(scratch) / f"home-{runtime[0]}"
+            env = scratch_home(home)
+            for index, (event, extra, expect) in enumerate(VERIFY_STEPS):
+                if event == "switch":
+                    (home / ".silverback").mkdir(exist_ok=True)
+                    (home / ".silverback" / "guard").write_text(extra + "\n", encoding="utf-8")
+                    continue
+                payload = json.dumps({"session_id": "s-1", **extra})
+                run = run_hook(runtime, root, "verify", [event], payload, env)
+                if run.returncode:
+                    found.append(f"{runtime[0]} verify {event} exited {run.returncode}: {run.stderr.strip()[:120]}")
+                    break
+                if event != "stop":
+                    continue
+                sent_back = bool(run.stdout.strip()) and json.loads(run.stdout).get("decision") == "block"
+                if sent_back != expect:
+                    found.append(f"{runtime[0]} verify stop at step {index + 1} "
+                                 f"{'sent the turn back' if sent_back else 'let the turn end'}")
+            log = home / ".silverback" / "verify.log"
+            if not log.is_file() or len(log.read_text(encoding="utf-8").splitlines()) != 1:
+                found.append(f"{runtime[0]} verify observe mode did not log the one unchecked turn")
+    return found
+
+
+def plugin_compact_hook_keeps_the_task_state() -> list[str]:
+    runtimes, found = hook_runtimes()
+    with tempfile.TemporaryDirectory() as scratch:
+        root = plugin_copy(scratch)
+        outputs = set()
+        for runtime in runtimes:
+            claude = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "trigger": "auto"}))
+            codex = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "turn_id": "t"}))
+            if claude.returncode or "Keep in the summary" not in claude.stdout:
+                found.append(f"{runtime[0]} compact hook printed {claude.stdout.strip()[:60]!r}")
+            if codex.returncode or codex.stdout.strip():
+                found.append(f"{runtime[0]} compact hook printed text to Codex")
+            outputs.add(claude.stdout.replace("\r\n", "\n"))
+        if len(outputs) > 1:
+            found.append("the compact hooks print different instructions")
+    return found
+
+
+# Characters no reader sees: zero-width, bidi controls and the Unicode Tags
+# block, which can carry a whole instruction an agent reads and a reviewer
+# does not (the "rules file backdoor").
+HIDDEN = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]")
+
+
+def text_has_no_hidden_characters() -> list[str]:
+    found = []
+    files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=ROOT,
+                           capture_output=True, text=True, check=True).stdout.splitlines()
+    for path in files:
+        if pathlib.PurePosixPath(path).suffix not in {".md", ".txt", ".json", ".sh", ".ps1", ".py", ".yml"}:
+            continue
+        if not (ROOT / path).is_file():
+            continue
+        for number, line in enumerate((ROOT / path).read_text(encoding="utf-8").splitlines(), 1):
+            for match in HIDDEN.finditer(line):
+                found.append(f"{path}:{number}: hidden character U+{ord(match.group()):04X}")
+    return found
+
+
 GATES = [
     (f"core {CORE} stays under {CORE_LINE_LIMIT} instruction lines", core_under_line_limit),
     (f"core {CORE} stays under {CORE_BYTE_LIMIT} bytes", core_under_byte_limit),
@@ -762,6 +1023,8 @@ GATES = [
      modules_name_no_stack),
     (f"every rules module is listed in {INDEX_FILE}, and {CORE} points at it", modules_listed_in_index),
     ("every rules module opens with its trigger line", modules_open_with_trigger),
+    ("every rules module carries frontmatter matching its index line",
+     modules_carry_frontmatter_matching_the_index),
     (f"every rules module stays under {MODULE_WORD_LIMIT} words", modules_under_word_limit),
     ("llms.txt stays in sync with rules/", llms_in_sync),
     ("llms.txt links point at files that exist", llms_links_exist),
@@ -776,6 +1039,12 @@ GATES = [
     ("/silverback:guard turns the push and recursive-delete prompts off and on", plugin_guard_switch_turns_prompts_off_and_on),
     ("the plugin SubagentStart hook carries Boundaries, Security and Verification",
      plugin_subagent_hook_carries_the_hard_rules),
+    ("the plugin file guard asks before an edit to a file that constrains the agent",
+     plugin_file_guard_asks_about_constraint_files),
+    ("the verification check sends back a turn that edited and ran nothing",
+     plugin_verify_check_sends_back_unchecked_edits),
+    ("the PreCompact hook names the task state the summary keeps", plugin_compact_hook_keeps_the_task_state),
+    ("tracked text carries no hidden Unicode characters", text_has_no_hidden_characters),
 ]
 
 
