@@ -31,6 +31,7 @@ import concurrent.futures
 import importlib.util
 import json
 import math
+import os
 import pathlib
 import re
 import shutil
@@ -257,30 +258,228 @@ def agent_command(claude: str, prompt: str, model: str, call_budget: float,
     return command
 
 
+# Codex runs only the arms it can load the same way a user would: none, and
+# this repository as a Codex plugin. The other plugins ship for Claude Code.
+CODEX_ARMS = ("baseline", "silverback")
+# Codex wraps every shell command in the shell it ran through; the scorers read
+# the command itself, the way Claude Code reports it.
+CODEX_WRAPPER = re.compile(r"""^\s*"?[^"]*?(?:cmd\.exe|pwsh(?:\.exe)?|powershell(?:\.exe)?|bash(?:\.exe)?|sh)"?"""
+                           r"""\s+(?:/d\s+)?(?:/c|-Command|-lc|-c)\s+(['"]?)(.*)\1\s*$""", re.S)
+
+
+# Qwen Code runs the same two arms: none, and this repository linked as a Qwen
+# extension. Its stream-json follows Claude Code's events with Qwen's own tool
+# names, which the scorers read under the Claude names.
+QWEN_TOOLS = {"run_shell_command": "Bash", "edit": "Edit", "write_file": "Write",
+              "read_file": "Read", "notebook_edit": "NotebookEdit"}
+# The login a Qwen home needs: the OAuth file, or an API key in the environment.
+QWEN_LOGIN_FILES = ("oauth_creds.json", ".env")
+QWEN_KEY_PREFIXES = ("OPENAI_", "DASHSCOPE_", "QWEN_")
+
+
+def qwen_home(arm: str, plugin: pathlib.Path | None, root: pathlib.Path) -> pathlib.Path:
+    """One HOME per arm holding only the Qwen login and the auth choice from the
+    owner's settings, so the owner's extensions, hooks and context files stay
+    out of every cell; the arm's extension is linked the way a user links it."""
+    home = root / f"qwen-{arm}"
+    if (home / ".qwen").is_dir():
+        return home
+    own = pathlib.Path.home() / ".qwen"
+    logins = [name for name in QWEN_LOGIN_FILES if (own / name).is_file()]
+    if not logins and not any(key.startswith(QWEN_KEY_PREFIXES) for key in os.environ):
+        raise SystemExit(f"no Qwen login at {own} or in the environment: run qwen once to sign in")
+    (home / ".qwen").mkdir(parents=True)
+    for name in logins:
+        shutil.copy2(own / name, home / ".qwen" / name)
+    try:
+        auth = json.loads((own / "settings.json").read_text(encoding="utf-8")).get("security", {}).get("auth")
+    except (OSError, ValueError):
+        auth = None
+    if auth:
+        (home / ".qwen" / "settings.json").write_text(json.dumps({"security": {"auth": auth}}), encoding="utf-8")
+    if plugin is not None:
+        # link asks to confirm the context file it adds; there is no flag for it.
+        subprocess.run([shutil.which("qwen") or "qwen", "extensions", "link", str(plugin)],
+                       env=qwen_env(home, dict(os.environ)), check=True, capture_output=True, text=True, input="y\n")
+    return home
+
+
+def qwen_env(home: pathlib.Path, base: dict[str, str]) -> dict[str, str]:
+    keys = {key: value for key, value in os.environ.items() if key.startswith(QWEN_KEY_PREFIXES)}
+    return {**base, **keys, "HOME": str(home), "USERPROFILE": str(home)}
+
+
+def qwen_command(qwen: str, prompt: str, model: str, session: str | None) -> list[str]:
+    command = [qwen, "-p", prompt, "-o", "stream-json", "--approval-mode", "yolo", "-m", model]
+    return command + (["--resume", session] if session else [])
+
+
+def qwen_events(stdout: str, model: str, version: str, plugins: list[str]) -> list[dict]:
+    """Qwen stream-json with the tool names the scorers read and the init event
+    the summary reads its model, version and plugins from."""
+    events = [{"type": "system", "subtype": "init", "model": model, "claude_code_version": version,
+               "plugins": [{"name": name} for name in plugins]}]
+    for event in read_events(stdout):
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            continue
+        if event.get("type") == "assistant":
+            for block in (event.get("message") or {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    block["name"] = QWEN_TOOLS.get(block.get("name"), block.get("name"))
+        events.append(event)
+    return events
+
+
+def codex_home(arm: str, plugin: pathlib.Path | None, root: pathlib.Path) -> pathlib.Path:
+    """One Codex home per arm, outside the owner's own: the login copied from
+    it and nothing else, so the owner's plugins, hooks, MCP servers and
+    instructions stay out of every cell, and the arm's plugin is installed the
+    way the README installs it."""
+    home = root / f"codex-{arm}"
+    if (home / "auth.json").is_file():
+        return home
+    own = pathlib.Path(os.environ.get("CODEX_HOME") or pathlib.Path.home() / ".codex")
+    if not (own / "auth.json").is_file():
+        raise SystemExit(f"no Codex login at {own}: run codex login first")
+    home.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(own / "auth.json", home / "auth.json")
+    config = 'approval_policy = "never"\nsandbox_mode = "workspace-write"\n'
+    if os.name == "nt":
+        config += '[windows]\nsandbox = "unelevated"\n'
+    (home / "config.toml").write_text(config, encoding="utf-8")
+    if plugin is not None:
+        env = {**os.environ, "CODEX_HOME": str(home)}
+        codex = shutil.which("codex") or "codex"
+        for args in (["plugin", "marketplace", "add", str(plugin)], ["plugin", "add", "silverback@silverback"]):
+            subprocess.run([codex, *args], env=env, check=True, capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL)
+    return home
+
+
+def codex_command(codex: str, prompt: str, model: str, effort: str | None, plugin: pathlib.Path | None,
+                  thread: str | None) -> list[str]:
+    command = [codex, "exec"] + (["resume", thread] if thread else [])
+    command += ["--json", "--skip-git-repo-check", "-m", model]
+    if effort:
+        command += ["-c", f"model_reasoning_effort={json.dumps(effort)}"]
+    if plugin is not None:
+        # The scratch home has no persisted trust for the plugin's hooks; the
+        # hooks are this repository's own, read before the run.
+        command.append("--dangerously-bypass-hook-trust")
+    return command + [prompt]
+
+
+def codex_events(stdout: str, model: str, version: str, plugins: list[str]) -> list[dict]:
+    """codex exec --json events, rewritten as the Claude Code stream-json events
+    the scorers read: a shell command or a file change becomes an assistant
+    tool_use, a failed one a tool_result error, the last agent message and the
+    token usage a result event."""
+    events = [{"type": "system", "subtype": "init", "model": model, "claude_code_version": version,
+               "plugins": [{"name": name} for name in plugins]}]
+    reply, usage, thread = "", {}, None
+    for raw in stdout.splitlines():
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "eval_turn":
+            events.append(event)
+            continue
+        if event.get("type") == "thread.started":
+            thread = event.get("thread_id")
+        if event.get("type") == "turn.completed":
+            used = event.get("usage", {})
+            usage = {"input_tokens": used.get("input_tokens", 0) - used.get("cached_input_tokens", 0),
+                     "cache_read_input_tokens": used.get("cached_input_tokens", 0),
+                     "cache_creation_input_tokens": used.get("cache_write_input_tokens", 0),
+                     "output_tokens": used.get("output_tokens", 0)}
+            events.append({"type": "result", "result": reply, "usage": usage, "session_id": thread,
+                           "total_cost_usd": None, "num_turns": None})
+            reply = ""
+        if event.get("type") != "item.completed":
+            continue
+        item = event.get("item", {})
+        kind, item_id = item.get("type"), item.get("id", "")
+        if kind == "agent_message":
+            reply = item.get("text", "")
+        elif kind == "command_execution":
+            command = item.get("command", "")
+            inner = CODEX_WRAPPER.match(command)
+            command = inner.group(2) if inner else command
+            events.append({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Bash", "id": item_id, "input": {"command": command}}]}})
+            output = item.get("aggregated_output", "")
+            failed = item.get("status") != "completed"
+            started = not output.startswith(("Failed to create", "Rejected", "Command blocked"))
+            events.append({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": item_id, "is_error": failed,
+                 "content": (f"Exit code {item.get('exit_code')}\n" if failed and started else "") + output}]}})
+        elif kind == "file_change":
+            for change in item.get("changes", []):
+                events.append({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "name": "Write" if change.get("kind") == "add" else "Edit",
+                     "id": item_id, "input": {"file_path": change.get("path", "")}}]}})
+    return events
+
+
 def run_cell(claude: str, job: Job, arm: str, plugin: pathlib.Path | None, model: str,
              call_budget: float, run_dir: pathlib.Path, repeat: int,
-             effort: str | None = None) -> dict:
-    scratch = pathlib.Path(tempfile.mkdtemp(prefix=f"bench-{job.name}-"))
+             effort: str | None = None, agent: str = "claude", home: pathlib.Path | None = None) -> dict:
+    if agent == "codex" and home is not None:
+        # mkdtemp gives the directory an owner-only ACL on Windows, which the
+        # Codex sandbox's restricted user cannot enter: a plain mkdir instead.
+        scratch = home.parent / "cells" / f"bench-{job.name}-{uuid.uuid4().hex[:8]}"
+        scratch.mkdir(parents=True)
+    else:
+        scratch = pathlib.Path(tempfile.mkdtemp(prefix=f"bench-{job.name}-"))
     workdir = scratch / "repo"
     session_id = str(uuid.uuid4())
     out = run_dir / f"{job.name}.{arm}.{repeat}.jsonl"
     try:
         job.setup(workdir)
         started = time.monotonic()
-        stdout, exit_code = "", 0
+        stdout, exit_code, thread = "", 0, None
         for index, prompt in enumerate(job.turns):
             if index:
                 job.between_turns(workdir, index)
             session = ("--session-id" if index == 0 else "--resume", session_id)
             if len(job.turns) > 1:
                 stdout += json.dumps({"type": "eval_turn", "turn": index, "prompt": prompt}) + "\n"
-            text, exit_code = run_agent(agent_command(claude, prompt, model, call_budget, plugin,
-                                                      session, effort, (ARMS[arm] or {}).get("system")),
-                                        workdir, agent_env(job))
+            if agent == "codex":
+                env = {**agent_env(job), "CODEX_HOME": str(home)}
+                # The Windows sandbox cannot start a Store-packaged pwsh
+                # (CreateProcessAsUserW 5), and Codex prefers pwsh when PATH
+                # has it, so the cell's PATH leaves the WindowsApps folders out.
+                if os.name == "nt":
+                    env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                                  if "windowsapps" not in p.lower())
+                text, exit_code = run_agent(codex_command(claude, prompt, model, effort, plugin, thread),
+                                            workdir, env)
+                found = re.search(r'"thread_id"\s*:\s*"([^"]+)"', text)
+                thread = thread or (found.group(1) if found else None)
+            elif agent == "qwen":
+                text, exit_code = run_agent(qwen_command(claude, prompt, model, thread), workdir,
+                                            qwen_env(home, agent_env(job)))
+                found = re.search(r'"session_id"\s*:\s*"([^"]+)"', text)
+                thread = thread or (found.group(1) if found else None)
+            else:
+                text, exit_code = run_agent(agent_command(claude, prompt, model, call_budget, plugin,
+                                                          session, effort, (ARMS[arm] or {}).get("system")),
+                                            workdir, agent_env(job))
             stdout += text if text.endswith("\n") or not text else text + "\n"
             if exit_code:
                 break
         seconds = round(time.monotonic() - started)
+        if agent == "codex":
+            version = subprocess.run([claude, "--version"], capture_output=True, text=True,
+                                     stdin=subprocess.DEVNULL).stdout.strip()
+            events = codex_events(stdout, model, version, ["silverback"] if plugin else [])
+            stdout = "\n".join(json.dumps(event) for event in events) + "\n"
+        elif agent == "qwen":
+            version = subprocess.run([claude, "--version"], capture_output=True, text=True,
+                                     stdin=subprocess.DEVNULL).stdout.strip()
+            events = qwen_events(stdout, model, f"qwen {version}", ["silverback"] if plugin else [])
+            stdout = "\n".join(json.dumps(event) for event in events) + "\n"
         out.write_text(redact(stdout, scratch), encoding="utf-8")
         events = read_events(stdout)
         init = next((e for e in events if e.get("subtype") == "init"), {})
@@ -294,7 +493,7 @@ def run_cell(claude: str, job: Job, arm: str, plugin: pathlib.Path | None, model
                 discard(path)
     reply = str(results[-1].get("result") or "") if results else ""
     return {
-        "task": job.name, "kind": job.kind, "arm": arm, "repeat": repeat,
+        "task": job.name, "kind": job.kind, "arm": arm, "repeat": repeat, "agent": agent,
         "model": init.get("model"), "effort": effort, "claude_code": init.get("claude_code_version"),
         "plugins": [p.get("name") for p in init.get("plugins", []) if isinstance(p, dict)],
         **score,
@@ -448,8 +647,10 @@ def mean_interval(values: list[float]) -> tuple[float, float, float] | None:
 
 def infra_failures(rows: list[dict]) -> list[dict]:
     """Cells whose score says nothing about the ruleset: the agent process
-    failed, timed out, or left no result event."""
-    return [r for r in rows if r.get("agent_exit") not in (0, None) or r.get("cost_usd") is None]
+    failed, timed out, or left no result event. Codex and Qwen report tokens,
+    never a cost, so there the missing token count marks the missing result."""
+    return [r for r in rows if r.get("agent_exit") not in (0, None)
+            or r.get("input_tokens" if r.get("agent") in ("codex", "qwen") else "cost_usd") is None]
 
 
 def summarize(rows: list[dict], arms: list[str]) -> None:
@@ -584,8 +785,9 @@ def discrimination(run_dirs: list[pathlib.Path], arms: list[str]) -> None:
     """A task earns its place when it separates the arms and gets easier for a
     stronger model. Runs on several models, ordered from the weakest, give each
     task's pass rate per arm and model, and flag a task every arm passes on
-    every model (it measures nothing) or one the baseline passes less often on
-    a stronger model (ambiguous, or scored wrongly)."""
+    every model (it measures nothing), one the baseline alone passes on every
+    model (a candidate to retire), or one the baseline passes less often on a
+    stronger model (ambiguous, or scored wrongly)."""
     runs = [(run_dir.name, load_rows(run_dir)) for run_dir in run_dirs]
     tasks = sorted({r["task"] for _, rows in runs for r in rows})
     def model_of(name: str) -> str:
@@ -609,9 +811,13 @@ def discrimination(run_dirs: list[pathlib.Path], arms: list[str]) -> None:
         flags = []
         # An open request passes when its file compiles; code size is its
         # measure, so a full pass there says nothing about discrimination.
+        known = [v for v in baseline if v is not None]
         if rates and min(rates) >= 0.9 and not task.startswith("vibe-"):
             flags.append("saturated")
-        known = [v for v in baseline if v is not None]
+        # The bare model already holds the rule everywhere: the task measures
+        # nothing the ruleset adds, so it is a candidate to retire.
+        elif known and min(known) >= 0.9 and not task.startswith("vibe-"):
+            flags.append("retire: baseline passes on every model")
         if len(known) >= 2 and any(later + 0.2 < earlier for earlier, later in zip(known, known[1:])):
             flags.append("baseline falls on a stronger model")
         print(f"{task:<18}{split_of(task):>6}" + "".join(f"{c:>16}" for c in cells) + "   " + ", ".join(flags))
@@ -674,7 +880,10 @@ def main() -> int:
     parser.add_argument("tasks", nargs="*", help="task names (default: all)")
     parser.add_argument("--arms", default=",".join(ARMS), help=f"subset of {','.join(ARMS)}")
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--agent", choices=("claude", "codex", "qwen"), default="claude",
+                        help=f"the agent CLI every cell runs; codex and qwen run the arms {', '.join(CODEX_ARMS)}")
+    parser.add_argument("--model", help=f"model id for the agent (default for claude: {DEFAULT_MODEL}; "
+                                        "codex needs one)")
     parser.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max"),
                         help="passed to every agent session as --effort")
     parser.add_argument("--workers", type=int, default=4, help="cells run in parallel")
@@ -722,9 +931,16 @@ def main() -> int:
     if args.rescore:
         rescore(args.rescore)
         return 0
-    claude = shutil.which("claude")
+    if args.agent != "claude" and not set(arms) <= set(CODEX_ARMS):
+        parser.error(f"--agent {args.agent} runs only the arms {', '.join(CODEX_ARMS)}")
+    if args.agent != "claude" and not args.model:
+        parser.error(f"--agent {args.agent} needs --model: its default changes with each release")
+    if args.agent == "qwen" and args.effort:
+        parser.error("--agent qwen has no effort setting")
+    args.model = args.model or DEFAULT_MODEL
+    claude = shutil.which(args.agent)
     if not claude:
-        print("claude not found on PATH", file=sys.stderr)
+        print(f"{args.agent} not found on PATH", file=sys.stderr)
         return 1
 
     if args.resume:
@@ -733,7 +949,8 @@ def main() -> int:
     else:
         suffix = f"-{args.label}" if args.label else ""
         effort = f"-{args.effort}" if args.effort else ""
-        run_dir = args.out.resolve() / f"{time.strftime('%Y%m%d-%H%M%S')}-{args.model}{effort}{suffix}"
+        agent = "" if args.agent == "claude" else f"{args.agent}-"
+        run_dir = args.out.resolve() / f"{time.strftime('%Y%m%d-%H%M%S')}-{agent}{args.model}{effort}{suffix}"
         rows = []
     if REPO in run_dir.parents:
         parser.error("--out points inside the repository; results are kept outside it")
@@ -744,10 +961,15 @@ def main() -> int:
         if arm not in plugins or not (pathlib.Path(path) / ".claude-plugin" / "plugin.json").is_file():
             parser.error(f"--plugin-path {override}: unknown arm or no .claude-plugin/plugin.json there")
         plugins[arm] = pathlib.Path(path).resolve()
+    make_home = {"codex": codex_home, "qwen": qwen_home}.get(args.agent)
+    homes = ({arm: make_home(arm, plugins[arm], args.out.resolve() / "homes" / run_dir.name) for arm in arms}
+             if make_home else {})
     done = {(r["task"], r["arm"], r["repeat"]) for r in rows}
+    # A task that measures one arm's own mechanism (ONLY_ARMS) skips the others.
     cells = [(job, arm, repeat) for repeat in range(1, args.repeats + 1)
              for job in load_jobs(args.tasks, args.split) for arm in arms
-             if (job.name, arm, repeat) not in done]
+             if (job.name, arm, repeat) not in done
+             and arm in (getattr(job.module, "ONLY_ARMS", None) or (arm,))]
     lock = threading.Lock()
     spent = [sum(r.get("cost_usd") or 0 for r in rows)]
     stopped = threading.Event()
@@ -758,7 +980,7 @@ def main() -> int:
             stopped.set()
             return
         row = run_cell(claude, job, arm, plugins[arm], args.model, args.call_budget, run_dir, repeat,
-                       args.effort)
+                       args.effort, args.agent, homes.get(arm))
         with lock:
             rows.append(row)
             spent[0] += row["cost_usd"] or 0

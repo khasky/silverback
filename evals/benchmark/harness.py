@@ -91,8 +91,9 @@ def redact(transcript: str, scratch: pathlib.Path) -> str:
 
 def run_agent(command: list[str], workdir: pathlib.Path, env: dict[str, str]) -> tuple[str, int]:
     try:
+        # stdin closed: codex exec reads a piped stdin as more prompt and waits on it.
         run = subprocess.run(command, cwd=workdir, env=env, capture_output=True, text=True,
-                             encoding="utf-8", timeout=900)
+                             encoding="utf-8", timeout=900, stdin=subprocess.DEVNULL)
         return run.stdout, run.returncode
     except subprocess.TimeoutExpired as expired:
         stdout = expired.stdout or b""
