@@ -16,21 +16,25 @@ Some lines exist only to compensate for a model weakness: push harder to use a t
 `AGENTS.md` is the always-loaded core and carries two caps, both enforced by `scripts/lint.py`:
 
 - **200 instruction lines** above the module index. Frontier models follow roughly 150–200 instructions reliably ([IFScale](https://arxiv.org/abs/2507.11538)), the agent's own system prompt already spends some of them, and Claude Code's guidance targets the same figure per file.
-- **32 KiB for the whole file**, index included. Codex reads at most 32 KiB of project instructions by default and silently truncates the rest ([Codex AGENTS.md docs](https://developers.openai.com/codex/guides/agents-md)), so anything past that byte never reaches it. The gate counts the file with CRLF line endings, the size a Windows checkout reads. Leave headroom: a project's own `AGENTS.md` shares the same budget.
+- **32 KiB for the whole file**, index included. Codex reads at most 32 KiB of project instructions by default and truncates the rest with only a warning ([Codex AGENTS.md docs](https://learn.chatgpt.com/docs/agent-configuration/agents-md)), so anything past that byte never reaches it. The gate counts the file with CRLF line endings, the size a Windows checkout reads. Leave headroom: a project's own `AGENTS.md` shares the same budget.
 
 Adding to the core means removing from the core. A long line counts once toward the line cap and in full toward the byte cap, so moving words into fewer lines saves nothing.
 
 Everything conditional goes to `rules/` — a module is read only when the task matches, so it costs nothing until it is needed. A new module needs:
 
-1. The file, `rules/<topic>.md`.
+1. The file, `rules/<topic>.md`, opening with frontmatter whose `description` is its `rules/INDEX.md` entry.
 2. One entry in `rules/INDEX.md`, naming the trigger ("Read this when ..."). CI fails if a module is unlisted or a listed module is missing.
 3. One entry in `llms.txt`.
-
 One module per bullet in `rules/INDEX.md`, in theme order. The index is a separate file the core points at, so a new module costs a line there and nothing from the always-loaded core.
 
 ## Module format
 
 ```markdown
+---
+description: "<the module's rules/INDEX.md entry, capitalized>"
+trigger: model_decision
+---
+
 # Topic
 
 Read this when <the exact trigger — a task type, not a technology fan club>.
@@ -79,17 +83,21 @@ Follow the repo's own `rules/markdown.md` — it applies to this repository firs
 
 - `AGENTS.md` ≤ 200 lines above the module index, and ≤ 32 KiB as a whole file.
 - No ellipsis glyph (U+2026) in any tracked Markdown file; three plain dots stand in for it.
+- No hidden characters (zero-width, bidirectional controls, the Unicode Tags block) in any text file, tracked or new: they carry instructions a reviewer cannot see.
+- Every module's frontmatter matches its `rules/INDEX.md` entry.
 - The core names no framework, library, or non-baseline CLI above the module index — a curated blocklist, so a tool name that belongs inside a presence check is added to the exception list in `scripts/lint.py`, never waved through.
 - Modules name blocklisted stacks only on a line marked as an example or on a line that names two or more ecosystems side by side — the same curated-blocklist approach, applied to every line of `rules/`, triggers included, and to each module's entry in the core index and in `llms.txt`.
 - Every `rules/*.md` appears in `rules/INDEX.md`, the core's On-demand section points at that file, and every module referenced anywhere exists.
-- Every module opens with its `Read this when` trigger line and stays under 3,500 words: a task that opens it pays for all of it, so an oversized module is split along a trigger the agent can see.
+- Every module opens, after its frontmatter, with its `Read this when` trigger line and stays under 3,500 words: a task that opens it pays for all of it, so an oversized module is split along a trigger the agent can see.
 - `llms.txt` lists every module, carries no stale entry, and every file it links exists.
 - Relative links resolve and code fences are balanced.
 - The Claude Code, Codex and Gemini CLI manifests agree with each other, and every path a hook runs still exists — a hook naming a file that moved loads nothing and says nothing. No `hooks/hooks.json` exists: Gemini CLI runs that file from an extension's root, and these hooks are written for Claude Code and Codex, so they live in `hooks/plugin-hooks.json`.
-- Every hook ships twice, `.sh` for Claude Code and `.ps1` for Codex on Windows, and `hooks/plugin-hooks.json` wires each event to both (`command` and `commandWindows`). The checks below run every twin in each shell the machine has (Git Bash, `pwsh`, Windows PowerShell), from a plugin copy whose path contains spaces, and a missing shell fails the gate.
-- The plugin guard (`hooks/guard.*`) is a rule table in the shape of Anthropic's `bash_command_validator` example: it blocks every command on its block rules and lets the neighbouring commands through, since a guard that stops ordinary work gets disabled, and one that lets a case slip reports a protection nobody has. Its three ask rules hand a push, a recursive delete and a commit naming an AI agent as co-author to the user (a human co-author passes), and so a payload that names a command it cannot read.
+- Every hook ships twice, `.sh` for Claude Code and `.ps1` for Codex on Windows, and `hooks/plugin-hooks.json` wires each event to both (`command` and `commandWindows`). Copilot CLI (`hooks/copilot-hooks.json`, both twins, `SILVERBACK_AGENT=copilot` for its top-level JSON fields), Qwen Code (`qwen-extension.json`) and Kimi Code (`kimi.plugin.json`, recognised by `client_type`, deny in place of ask) wire the same scripts, and every script those files name must exist. Their wiring follows each agent's documentation and is not run in those agents by CI. The checks below run every twin in each shell the machine has (Git Bash, `pwsh`, Windows PowerShell), from a plugin copy whose path contains spaces, and a missing shell fails the gate.
+- The plugin guard (`hooks/guard.*`) is a rule table in the shape of Anthropic's `bash_command_validator` example: it blocks every command on its block rules and lets the neighbouring commands through, since a guard that stops ordinary work gets disabled, and one that lets a case slip reports a protection nobody has. Its ask rules hand a push, a recursive delete, a history rewrite and a commit naming an AI agent as co-author to the user (a human co-author passes), and so a payload that names a command it cannot read. Codex ignores an ask, so on Codex (its payload carries a `turn_id`) each ask rule denies instead, naming the switch that turns it off.
+- The file guard (`hooks/guard-files.*`) asks before an edit tool, `apply_patch` included, writes a file that constrains the agent (instruction files, agent settings and hooks, git hook and CI configs, memory). The shell guard does not see edit tools, so the two together cover both ways in.
+- The verify hook (`hooks/verify.*`) sends a turn back once, never twice in a row (`stop_hook_active`), when an edit came after the last shell command, and each of its modes (`on`, `observe`, `off`) behaves as `/silverback:guard` reports it. The compact hook prints what the summary must keep, and nothing on Codex.
 - The plugin `SubagentStart` hook (`hooks/subagent.*`) gives a subagent the core's Boundaries, Security and Verification sections exactly as the core states them, under the inline limit.
-- The plugin's `SessionStart` parts (`hooks/load-core.*`) each stay under Claude Code's inline limit for hook output, rebuild `AGENTS.md` in order, print the same parts in every shell, and each has a hook: a part over the limit reaches the session as a two-kilobyte preview.
+- The plugin's `SessionStart` parts (`hooks/load-core.*`) each stay under 7,500 characters, below Claude Code's inline limit for hook output and Codex's 2,500-token default for added context, rebuild `AGENTS.md` in order, print the same parts in every shell, and each has a hook: a part over the limit reaches the session as a two-kilobyte preview.
 
 CI runs the script on Ubuntu and Windows, runs `evals/benchmark/run.py --selftest` (every benchmark scorer against scripted good and bad outcomes, no agent), and installs the checkout as a plugin into empty Claude Code and Codex homes and as a Gemini CLI extension, failing unless each lists it enabled. A manifest can pass every schema check and still fail to install.
 
@@ -104,7 +112,10 @@ The benchmark against the other plugins is the acceptance test for anything that
 
 - A rule or hook message names no task, file or phrase from the benchmark. It states the invariant the task tests; wording lifted from a transcript fits that transcript.
 - A rule that text alone does not hold on the benchmark's models belongs in a hook: a hard block or a confirmation prompt (`hooks/guard.*`). Rewording a rule again rarely moves the number.
-- `--discrimination <run dirs, weakest model first>` flags a task every arm passes on every model, which measures nothing, and a task the baseline passes less often on a stronger model, which is ambiguous or scored wrongly. A flagged task is rewritten or dropped, and a new task goes to the test split unless it replaces a train task.
+- `--discrimination <run dirs, weakest model first>` flags a task every arm passes on every model, which measures nothing; a task the baseline alone passes on every model, a candidate to retire together with the rule it tests (the bar above); and a task the baseline passes less often on a stronger model, which is ambiguous or scored wrongly. A flagged task is rewritten or dropped, and a new task goes to the test split unless it replaces a train task.
+- Trap tasks cover both directions. A ruleset that only adds caution scores well on traps where stopping is right and badly in real work, so the test split also holds tasks where asking is the failure (`no_branch_question`, `asked_delete`), one for module routing (`module_routing`, on this ruleset's arm only), and one with the trap late in a multi-turn session (`late_trap`). A new rule that makes the agent stop more often is checked against the first two.
+- A task's `RULE` names the core section (`Boundaries: ...`) or the module (`Workflow: ...` for `rules/workflow.md`) it tests; the selftest fails on a name that matches neither, so a renamed section cannot leave a task pointing at nothing.
+- `--agent codex --model <id>` and `--agent qwen --model <id>` run the same trap tasks on Codex and Qwen Code (the `baseline` and `silverback` arms) in a scratch home holding only the agent's login. A rule is checked on both agents before it is called agent-agnostic.
 - Cells the agent process failed (non-zero exit, timeout, no result) are listed under the summary as infrastructure failures; rerun them with `--resume` before reading the totals.
 
 Trigger-versus-content scope is not mechanically checkable — it is the reviewer's job. Read the trigger, then read the bullets, and ask what a reader on a different stack does with each one.

@@ -40,14 +40,18 @@ README.md        # setup and optional tooling (this file)
 llms.txt         # index of the core and every module for LLM consumption —
                  # CI keeps it two-way synced with rules/
 hooks/           # plugin-hooks.json and the hook scripts: load-core (SessionStart),
-                 # subagent (SubagentStart), guard (PreToolUse); each ships as .sh (Claude Code)
-                 # and .ps1 (Codex on Windows)
-.claude-plugin/  # plugin.json and marketplace.json for the Claude Code plugin; Codex reads the
-                 # marketplace too
+                 # subagent (SubagentStart), guard and guard-files (PreToolUse),
+                 # verify (PostToolUse, Stop), compact (PreCompact); each ships as .sh
+                 # (Claude Code) and .ps1 (Codex on Windows); copilot-hooks.json wires
+                 # the same scripts for Copilot CLI
+.claude-plugin/  # plugin.json and marketplace.json for the Claude Code plugin; Codex and
+                 # Copilot CLI read the marketplace too
 .codex-plugin/   # plugin.json for the Codex plugin
+.github/plugin/  # plugin.json for the Copilot CLI plugin
 gemini-extension.json  # the Gemini CLI extension: loads AGENTS.md as a context file, no hooks
-qwen-extension.json    # the same for Qwen Code
-kimi.plugin.json        # the Kimi Code plugin: loads AGENTS.md into the system prompt
+qwen-extension.json    # the same for Qwen Code, plus its hooks
+kimi.plugin.json        # the Kimi Code plugin: loads AGENTS.md into the system prompt, plus
+                        # its hooks
 scripts/         # lint.py — every gate above, run by CI and by the optional
                  # pre-commit hook that install-hooks.py sets up
 evals/           # benchmark/ runs this ruleset and five other plugins on the same
@@ -56,14 +60,14 @@ evals/           # benchmark/ runs this ruleset and five other plugins on the sa
 
 The core is self-sufficient. Agents read `rules/*.md` only when the task matches (editing Markdown, styling UI, a dedicated refactor, ...) and skip them if the clone can't be located — so importing the single `AGENTS.md` is always enough.
 
-The 200-instruction cap is not cosmetic: frontier models follow roughly 150–200 instructions reliably (measured by [IFScale](https://arxiv.org/abs/2507.11538)), and the agent's own system prompt already spends ~50 of them. Everything past that budget degrades adherence to the rules that matter. The file also stays under 32 KiB, the default `project_doc_max_bytes` past which Codex silently truncates project instructions.
+The 200-instruction cap is not cosmetic: frontier models follow roughly 150–200 instructions reliably (measured by [IFScale](https://arxiv.org/abs/2507.11538)), and the agent's own system prompt already spends ~50 of them. Everything past that budget degrades adherence to the rules that matter. The file also stays under 32 KiB, the default `project_doc_max_bytes` past which Codex truncates project instructions (with a warning, but the cut part is gone).
 
 ## Prerequisites
 
 One of the agents, installed by its own instructions:
 
 - [Claude Code](https://code.claude.com/docs/en/setup)
-- [Codex](https://developers.openai.com/codex/cli)
+- [Codex](https://learn.chatgpt.com/docs/codex/cli)
 - [Gemini CLI](https://geminicli.com/docs/get-started/installation/)
 - [Qwen Code](https://qwenlm.github.io/qwen-code-docs/en/users/quickstart/)
 - [Kimi Code](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started)
@@ -71,12 +75,12 @@ One of the agents, installed by its own instructions:
 - [Kilo Code CLI](https://kilo.ai/docs/cli)
 - [Antigravity CLI](https://antigravity.google/docs/cli/install)
 - [Cursor](https://cursor.com/downloads)
-- [Windsurf](https://windsurf.com/download)
+- [Devin for Windsurf](https://windsurf.com/download) (formerly Windsurf)
 - [opencode](https://opencode.ai/docs/)
 
 ## Install as a plugin
 
-The plugin loads `AGENTS.md` into the agent's instructions. Claude Code and Codex also get hooks that turn the rules an agent most often breaks into hard checks. Pick the plugin or the manual import, not both: both put the core in context twice.
+The plugin loads `AGENTS.md` into the agent's instructions. Claude Code, Codex, GitHub Copilot CLI, Qwen Code and Kimi Code also get hooks that turn the rules an agent most often breaks into hard checks. Pick the plugin or the manual import, not both: both put the core in context twice.
 
 | Agent | Install | Update | Uninstall |
 |---|---|---|---|
@@ -85,16 +89,28 @@ The plugin loads `AGENTS.md` into the agent's instructions. Claude Code and Code
 | Gemini CLI | `gemini extensions install https://github.com/khasky/silverback` (add `--auto-update` to follow the repository) | `gemini extensions update silverback` | `gemini extensions uninstall silverback` |
 | Qwen Code | `qwen extensions install https://github.com/khasky/silverback` | `qwen extensions update silverback` | `qwen extensions uninstall silverback` |
 | Kimi Code | `/plugins install https://github.com/khasky/silverback/tree/main`, then `/reload` | Reinstall from the same URL, then `/reload` | `/plugins remove silverback` |
+| GitHub Copilot CLI | `copilot plugin marketplace add khasky/silverback`, then `copilot plugin install silverback@silverback` | `copilot plugin update silverback` | `copilot plugin uninstall silverback` |
 
 What the hooks do:
 
-- `guard` (before every shell command) blocks, the way Anthropic's `bash_command_validator` example does, every command on its rule table: printing the environment or a secret variable, a recursive delete of `/`, `~`, `.` or `.git`, `git reset --hard`, `git clean -f`, a skip of git hooks (`--no-verify`, a `core.hooksPath` override), `DROP`/`TRUNCATE` or `DELETE` without `WHERE`, and a downloaded script piped into a shell. When you do want one of these, run it yourself in a terminal. A `git push`, any other recursive delete (`rm -r`, `Remove-Item -Recurse`, `rmdir /s`) and a commit whose `Co-Authored-By` trailer names an AI agent (by its bot account, signing address or name; a human co-author passes) it hands to you to approve or reject, and so is a command it cannot read.
-- `guard-switch` (when you send a prompt) handles `/silverback:guard`: `/silverback:guard push off` stops the prompt before a push, `/silverback:guard delete off` the one before a recursive delete, `on` brings either back, and `/silverback:guard` alone shows both. The hook answers itself without a model turn and keeps the switches in `~/.silverback/guard`, which the guard does not let the agent touch from the shell. A switched-off call goes through your agent's usual permission settings; the block rules and the co-author prompt stay on.
+- `guard` (before every shell command) blocks, the way Anthropic's `bash_command_validator` example does, every command on its rule table: printing the environment (from the shell or an interpreter one-liner such as `print(os.environ)`), a secret variable, a secrets file (`.env`, `.netrc`, a private key; `.env.example` passes) or a CLI's stored token (`gh auth token`); a recursive delete of `/`, `~`, `.` or `.git`; overwriting a disk (`dd of=/dev/`, `mkfs`, `Format-Volume`); discarding uncommitted or stashed work (`git reset --hard`, `git checkout -- .`, `git restore .`, `git clean -f`, `git stash drop`); a force push, a deleted remote branch or `filter-repo`; a skip of git hooks (`--no-verify`, `commit -n`, a `core.hooksPath` override, `HUSKY=0`); `DROP`/`TRUNCATE` or `DELETE` without `WHERE`; and a downloaded script piped into a shell. When you do want one of these, run it yourself in a terminal. A `git push`, any other recursive delete (`rm -r`, `Remove-Item -Recurse`, `rmdir /s`, `find -delete`), a history rewrite (`commit --amend`, `rebase`, `branch -D`) and a commit whose `Co-Authored-By` trailer names an AI agent (by its bot account, signing address or name; a human co-author passes) it hands to you to approve or reject, and so is a command it cannot read.
+- `guard-files` (before every file edit) hands you the edit of a file that constrains the agent: `AGENTS.md`, `CLAUDE.md` and their kin, `.gitignore`, agent settings and hooks, git hook and pre-commit configs, CI workflows, and the agent's memory files.
+- `verify` (after every edit and command, and when the agent ends its turn) sends a turn back once when files were edited after the last command ran: the agent runs the check that exercises the change or says which check did not run and why. A change with nothing to run says so in one line. `observe` logs the turns it would have sent back to `~/.silverback/verify.log` instead.
+- `compact` (before Claude Code compacts the conversation) asks the summary to keep the task and the user's constraints, the files changed, each check run with its command and result, and what is still open, verbatim where it is a command, path or error.
+- `guard-switch` (when you send a prompt) handles `/silverback:guard`: `push`, `delete`, `history` and `files` take `on` or `off` and turn the matching prompt on or off; `verify` takes `on`, `observe` or `off`; `/silverback:guard` alone shows every switch. The hook answers itself without a model turn and keeps the switches in `~/.silverback/guard`, which the guard does not let the agent touch from the shell. A switched-off call goes through your agent's usual permission settings; the block rules and the co-author prompt stay on.
 - `subagent` (when a subagent starts) gives it the core's Boundaries, Security and Verification sections, which it would otherwise run without.
 
-Codex runs the hooks only after you trust them: the next interactive `codex` start lists them under "Hooks need review". Gemini CLI, Qwen Code and Kimi Code get the core only, without hooks. Kimi Code loads it through `systemPromptPath` in `kimi.plugin.json`; `/reload` applies the plugin to the session. The `tree/main` URL selects the branch because a plain repository URL selects the latest release first, which may predate this manifest.
+Codex runs the hooks only after you trust them: the next interactive `codex` start lists them under "Hooks need review". Codex parses a hook's request to ask the user but does not act on it (codex-cli 0.169), so on Codex every prompt above blocks the call instead, and the reason names the switch that turns it off; the user runs the command or turns the switch off. Codex takes no text from its compaction event, so `compact` prints nothing there. Gemini CLI gets the core only, without hooks.
 
-Every other agent takes the manual import below. GitHub Copilot CLI installs the plugin, but it reads only a JSON `additionalContext` from a session-start hook and `load-core` prints plain text, so the core would not reach the session. Antigravity CLI installs the repository from a clone (`agy plugin install <clone>` reads `gemini-extension.json`), but loads nothing from it: no context file, no hooks. Its own plugin format would read `rules/` as always-on rules, so it is not offered. Cursor's Agent Plugins format carries only skills and MCP servers. Kilo Code's plugins are npm code modules.
+The Copilot, Qwen and Kimi hooks follow each agent's documentation and have not been run in those agents yet:
+
+- GitHub Copilot CLI reads `.github/plugin/plugin.json` ahead of the Claude Code manifest and runs `hooks/copilot-hooks.json`, which loads the core at session start as JSON `additionalContext` and wires the guards, `subagent` and `verify`. The scripts find the plugin through `PLUGIN_ROOT`, the variable Copilot documents for plugin processes, with `CLAUDE_PLUGIN_ROOT` as the fallback. Copilot drops a prompt hook's output, so `/silverback:guard` does not work there; the switches are the lines in `~/.silverback/guard` (`push=off`, `verify=observe`).
+- Qwen Code loads the core through `contextFileName` and runs the guards, `guard-switch`, `subagent` and `verify` from the hooks in `qwen-extension.json`. The commands call `bash`, so on Windows Git Bash must be on `PATH`.
+- Kimi Code loads the core through `systemPromptPath` and runs the guards and `verify` from the hooks in `kimi.plugin.json`, through `bash` as well. Kimi documents no way for a hook to ask, so as on Codex every prompt above blocks the call, and `verify` sends a turn back through exit code 2.
+
+In Kimi Code, `/reload` applies the plugin to the session. The `tree/main` URL selects the branch because a plain repository URL selects the latest release first, which may predate this manifest.
+
+Every other agent takes the manual import below. Antigravity CLI installs the repository from a clone (`agy plugin install <clone>` reads `gemini-extension.json`), but loads nothing from it: no context file, no hooks. Its own plugin format would read `rules/` as always-on rules, so it is not offered. Cursor's plugin format now carries rules and hooks as well, but this repository ships no Cursor manifest yet: it is untested there. Kilo Code's plugins are npm code modules.
 
 ## Install manually (import)
 
@@ -114,17 +130,19 @@ Then add one import line to the agent's global instructions file (create it if i
 | Qwen Code | `%USERPROFILE%\.qwen\QWEN.md` | `@C:/repos/silverback/AGENTS.md` |
 | GitHub Copilot CLI | `%USERPROFILE%\.copilot\copilot-instructions.md` | paste the contents of `AGENTS.md` |
 | Antigravity | `%USERPROFILE%\.gemini\AGENTS.md` | paste the contents of `AGENTS.md` |
-| opencode | `%USERPROFILE%\.config\opencode\AGENTS.md` | paste the contents of `AGENTS.md` |
+| opencode | `%USERPROFILE%\.config\opencode\opencode.json` | `"instructions": ["C:/repos/silverback/AGENTS.md"]` |
 | Kilo Code CLI | `%USERPROFILE%\.config\kilo\kilo.jsonc` | `"instructions": ["C:/repos/silverback/AGENTS.md"]` |
 | Cursor | Settings → Rules → User Rules | paste the contents of `AGENTS.md` |
-| Windsurf | per project only: `AGENTS.md` in the repository root | copy the file |
+| Devin (formerly Windsurf) | `%USERPROFILE%\.config\devin\AGENTS.md` | paste the contents of `AGENTS.md` |
 
-- Claude Code, Gemini CLI and Qwen Code resolve the `@` import themselves; Claude Code asks once to approve it. Kilo Code reads the file named in `instructions`, so it follows `git pull` too.
+- Claude Code, Gemini CLI and Qwen Code resolve the `@` import themselves; Claude Code asks once to approve it. opencode and Kilo Code read the file named in `instructions`, so they follow `git pull` too.
+- Cursor per project: a rule file `silverback.mdc` in the project's `.cursor/rules/` folder that opens with `alwaysApply: true` frontmatter and holds the contents of `AGENTS.md` loads in every chat of that project, the same as the User Rules paste.
 - Copilot CLI expands `@` only for files inside its own instructions folder, so it takes the pasted text. Antigravity also reads `~/.gemini/GEMINI.md`: with the Gemini CLI line in place, skip its row, or the core loads twice.
-- Windsurf caps global rules at 6,000 characters and `AGENTS.md` is longer, so it goes into each project instead.
+- Gemini CLI no longer serves free accounts since 2026-06-18; on a free account use the Antigravity row instead.
 - A pasted copy does not follow `git pull`: paste again after an update.
 - Codex has no import syntax: it reads the `@` line as text and follows it. For guaranteed loading, paste the file itself (Codex reads up to 32 KiB of instructions).
-- Per project instead of globally: copy `AGENTS.md` into the repository root. For Gemini CLI, add `"contextFileName": ["GEMINI.md", "AGENTS.md"]` to `~/.gemini/settings.json`.
+- Per project instead of globally: copy `AGENTS.md` into the repository root. Claude Code reads a project `AGENTS.md` itself since 2.1.277. For Gemini CLI, add `"context": { "fileName": ["GEMINI.md", "AGENTS.md"] }` to `~/.gemini/settings.json`.
+- The core asks before the agent writes to its own memory. To turn agent memory off instead: `"autoMemoryEnabled": false` in Claude Code's `settings.json`, `"memory": { "enableManagedAutoMemory": false }` in Qwen Code's, and Copilot Memory off in the GitHub Copilot settings.
 - Never copy `rules/` into `.claude/rules/`: Claude Code loads every file there at session start, which turns the on-demand modules into always-on tokens.
 - The import gets no hooks. In Claude Code, `"attribution": { "commit": "", "pr": "" }` in `settings.json` stops the default commit trailer.
 - Update with `git pull` in the clone; uninstall by deleting the line.
@@ -132,6 +150,8 @@ Then add one import line to the agent's global instructions file (create it if i
 ## How modules load
 
 Nothing loads a module automatically. The core points at `rules/INDEX.md`, one line per module naming the task that should open it; the agent reads the index when a task leaves the core, then the module whose line matches. The index stays out of the always-loaded core, so a turn that needs no module does not pay for it. Loading is therefore the agent's judgment call, the same as any other instruction it follows. To check that a module was read, ask the agent which `rules/` files it opened for the task, or watch for the file read in the tool log.
+
+Each module opens with `description` and `trigger: model_decision` frontmatter, the format Antigravity and Devin read for rules that load on demand.
 
 Conflicts resolve in a fixed order: the user's message, then the nearest project `AGENTS.md`/`CLAUDE.md`, then this core and the modules it indexes.
 
@@ -195,6 +215,8 @@ python evals/benchmark/run.py --split test --repeats 5 --model claude-sonnet-5-5
 python evals/benchmark/run.py --summary <run directory>      # totals with 95% intervals
 ```
 
+`--agent codex --model <id>` runs the trap tasks on Codex instead, with the `baseline` and `silverback` arms, each in its own scratch `CODEX_HOME` so no installed plugin leaks in; `--agent qwen --model <id>` does the same on Qwen Code, with a scratch home that holds only the Qwen login (written from Qwen's documentation, not yet run). The test split also holds tasks the tables above predate: two that fail an agent for asking instead of doing (`no_branch_question`, `asked_delete`), one that checks the agent opens the right module (`module_routing`), and one with the trap in the third turn of a session (`late_trap`). `--discrimination` flags a trap the baseline alone passes 90% of the time on every model: it measures nothing the ruleset adds and is a candidate to retire.
+
 ## Related
 
 Companion repositories, each a separate layer; pick the ones you need:
@@ -240,6 +262,7 @@ Where the rules were distilled from, per file.
 - `rules/monorepo.md`: Distilled from khasky/monorepo-architecture-playbook; phantom dependencies from the pnpm and Rush documentation.
 - `rules/observability.md`: Distilled from the Twelve-Factor App, Google SRE (health checking, graceful degradation), OpenTelemetry, and the RED method (Tom Wilkie); cross-checked against production reference implementations; runbook links from the Google SRE Workbook.
 - `rules/payments.md`: Distilled from Stripe's official integration guides (webhook signature verification, idempotency, fulfillment) and PCI-DSS handling basics; cross-checked against production reference implementations.
+- `rules/pr-descriptions.md`: Moved out of `rules/code-review.md`; the same sources as its review-request part.
 - `rules/performance.md`: Pool saturation is distilled from khasky/nodejs-runtime-performance-playbook; same-lockfile comparisons from MxIris-Reverse-Engineering/MachOSwiftSection; identical output as half of the proof from the mongodb-performance-advisor agent in github/awesome-copilot (MIT).
 - `rules/planning.md`: Distilled from the plan-mode instructions in a public collection of Codex system prompts, and from spec-handoff practice; decision records from Michael Nygard's ADR format; marked requirements with acceptance checks from the specification agent in github/awesome-copilot (MIT).
 - `rules/privacy.md`: Distilled from GDPR/CCPA engineering practice: deletion propagation, retention enforcement, data mapping; consent from the ePrivacy Directive, the Planet49 ruling and EDPB guidance; session-replay masking from vendor privacy documentation.
