@@ -1,0 +1,10 @@
+{
+  "name": "silverback",
+  "description": "Shared AGENTS.md ruleset for Kimi Code CLI",
+  "license": "MIT",
+  "systemPromptPath": "./AGENTS.md",
+  "interface": {
+    "displayName": "Silverback",
+    "shortDescription": "Shared rules for coding agents"
+  }
+}
