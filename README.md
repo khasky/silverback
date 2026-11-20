@@ -4,6 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Emojery](https://api.emojery.app/badge/github/khasky/silverback.svg)](https://emojery.app/react?t=github/khasky/silverback)
 
+> [!NOTE]
+> Silverback continues **[khasky/awesome-agents-md](https://github.com/khasky/awesome-agents-md)**, now archived. Coming from the `awesome-agents-md` plugin: uninstall it and install `silverback` as shown in [Install as a plugin](#install-as-a-plugin).
+
 A ruleset written in the [AGENTS.md](https://agents.md) format, with shared rules for AI coding agents: Claude Code, OpenAI Codex, Gemini, Kimi Code, Cursor, plus optional rule modules in `rules/` that load on demand. Clone once, import it globally into every agent you use.
 
 The always-loaded core covers: concise token-efficient communication, a coding discipline that stops at the first rung that holds (smallest correct diff, no speculative abstractions), a hard verification gate before any "done" claim, and a commit-proposal habit with no assistant traces. The procedure for larger work (assumptions, plans, the last pass before "done", debugging) loads from `rules/workflow.md` when the task calls for it, so the always-loaded part stays under 10 KB. On-demand modules in `rules/` extend it — commit messages that inherit the target repo's own convention, backend security, databases, caching, resilience, deployment and infrastructure definitions, payments, and more.
