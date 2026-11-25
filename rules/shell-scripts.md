@@ -14,7 +14,7 @@ Read this when writing or editing a shell script — bash/sh or PowerShell — a
 - A script with options gets `getopts`, a `usage()` printed on `-h` and on bad input, and a non-zero exit on misuse; exit codes are the script's API.
 - `printf` over `echo` for data (`echo` mangles `-n` and backslashes, and varies by shell); `command -v` over `which`; `[[ ]]` over `[ ]` in bash — and if the shebang says `#!/bin/sh`, no bashisms at all.
 - Run ShellCheck on every script; a suppressed finding carries its per-line `# shellcheck disable=SCnnnn` with the reason beside it.
-- A script that mutates shared state is idempotent on re-run (guard completed steps), and grows a `--dry-run` flag once it deletes or provisions; the core Boundaries backup rule applies to scripts the same as to typed commands.
+- A script that mutates shared state is idempotent on re-run (guard completed steps), and grows a `--dry-run` flag once it deletes or provisions; the core Boundaries ask-first rule for destructive commands applies to scripts the same as to typed commands.
 - A script runs where nobody answers a prompt: every command in it gets its non-interactive flag, and a command that still prompts fails the script. Repeated from the core Scope rule because a prompt in CI hangs until the job timeout instead of failing.
 - A script whose output a later step reads or diffs produces the same bytes on unchanged input: sorted ordering, no timestamps or absolute paths (`rules/api-contracts.md` for generated code).
 - PowerShell starts with `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'` — and still checks `$LASTEXITCODE` after native executables, which `Stop` does not cover.

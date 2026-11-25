@@ -13,7 +13,7 @@ Read this when running a comment-only cleanup pass over existing files: what the
 - Functional directives, wording included, because a tool matches the text or a reviewer needs it verbatim: `biome-ignore`, `eslint-disable`, `@ts-expect-error`, `@ts-check`, `/// <reference>`, `# noqa`, `# type: ignore`, `# shellcheck disable=`, `//go:` directives, `//nolint`, encoding and modeline headers, SPDX headers, shebangs, `nosemgrep`, test-skip reasons, and any other comment a tool parses.
 - TODO and FIXME. Flag one that looks obsolete; do not resolve or delete it as part of a comment pass.
 - A comment inside a string that is injected as code (an in-page evaluation body, a generated file's template): its prose may be fixed under these rules, but never a line of its code and never a value the surrounding code interpolates. A comment in a template that emits a generated file needs the generator re-run, so leave it.
-- Line width — never reflow to satisfy a character limit (core rule); the repo's formatter config governs. If a rewrite leaves a ragged short line inside an already-wrapped block, re-wrap that block's own lines and re-read it afterwards to confirm no word was dropped.
+- Line width — never reflow to satisfy a character limit; the repo's formatter config governs. If a rewrite leaves a ragged short line inside an already-wrapped block, re-wrap that block's own lines and re-read it afterwards to confirm no word was dropped.
 
 ## Proving a pass changed nothing
 

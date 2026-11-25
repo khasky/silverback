@@ -23,9 +23,9 @@ Read this when the task is a dedicated refactor, cleanup, rewrite or migration, 
 
 Not a violation — leave these alone:
 
-- Two copies of similar logic. The helper is earned on the third occurrence or by a shared invariant (core Coding rule); extracting at two couples call sites that only look alike, and a wrong shared function costs more than the duplicate did.
+- Two copies of similar logic. The helper is earned on the third occurrence or by a shared invariant; extracting at two couples call sites that only look alike, and a wrong shared function costs more than the duplicate did.
 - A long function that is a flat sequence of steps with no branching. Length alone is not complexity, and splitting it into single-caller helpers makes the reader jump between definitions to follow one story.
-- Validation and error handling at a trust boundary. It looks defensive because it is: the core rule bans runtime type-guards on internal calls, never checks on input the process does not control.
+- Validation and error handling at a trust boundary. It looks defensive because it is: a runtime type-guard on an internal call is removable, a check on input the process does not control never is (core Coding rule).
 - A branch that looks wrong and is pinned by a passing test. Treat it as documented behavior until someone proves otherwise — Chesterton's Fence covers logic, not only the code that is obviously load-bearing.
 - Naming, layout, or an abstraction that departs from your preference and matches the surrounding file. Repository style outranks generic best practice, and a consistency-only diff spends review attention it did not earn.
 - Dead code you did not create. Report it; deleting it is its own task with its own blast radius (core Coding rule).
