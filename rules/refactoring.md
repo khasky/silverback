@@ -20,6 +20,7 @@ Read this when the task is a dedicated refactor, cleanup, rewrite or migration, 
 - Before a rewrite or migration, inventory the behavior the repository does not hold: database triggers and stored procedures, scheduled jobs defined in infrastructure, feature-flag states, config kept on a deploy platform. Absent from the repository is not absent from the system, and a rewrite drops it without a failing test.
 - A comment-only pass is a cleanup with its own proof obligation: "comment-only" is shown by comparing the comment-stripped source at HEAD against the working tree, never asserted (`rules/comment-pass.md`).
 - Simplification red flags: needing to modify tests (behavior changed, not simplified); removing error handling to make code "cleaner". Simplicity is comprehension speed, not line count.
+- A structural finding (a cycle, a leak, a too-wide interface, from a linter or a review) is fixed by changing what depends on what. A move that keeps the same dependencies (code relocated to another file, a getter wrapped around a field, a re-export) passes the check on a structure nobody changed (core Boundaries on weakening a check).
 
 Not a violation — leave these alone:
 
