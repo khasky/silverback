@@ -703,11 +703,12 @@ def plugin_loads_whole_core() -> list[str]:
 
     with tempfile.TemporaryDirectory() as scratch:
         root = plugin_copy(scratch)
+        env = scratch_home(pathlib.Path(scratch) / "home")
         reference: list[str] = []
         for runtime in runtimes:
             parts = []
             while True:
-                run = run_hook(runtime, root, "load-core", [str(len(parts) + 1)])
+                run = run_hook(runtime, root, "load-core", [str(len(parts) + 1)], "", env)
                 if run.returncode:
                     found.append(f"{runtime[0]} load-core part {len(parts) + 1} exited "
                                  f"{run.returncode}: {run.stderr.strip()}")
@@ -848,6 +849,83 @@ def plugin_guard_switch_turns_prompts_off_and_on() -> list[str]:
     return found
 
 
+def rules_reply(state: str, news: str = "") -> str:
+    # The /silverback:rules answer: what changed, if anything, then the switch
+    # with the command that changes it and when a change takes effect.
+    return "\n".join([
+        "silverback rules:" + (f" {news}" if news else ""),
+        f"ruleset: {state} (/silverback:rules {'off' if state == 'on' else 'on'})",
+        "A change reaches the main session at its next start (a new session or /clear) and subagents at once. "
+        "The guard hooks stay as /silverback:guard sets them.",
+    ])
+
+
+# One session in order, as GUARD_SWITCH_STEPS. A prompt step names the whole
+# answer (None: not the command, passes untouched); a "ruleset" step says
+# whether the ruleset hooks (load-core, subagent, compact) print anything; a
+# command step says whether the guard asks (None: it blocks). With the ruleset
+# off every guard answers as it did with it on.
+RULES_SWITCH_STEPS = [
+    ("prompt", "/silverback:rules", rules_reply("on")),
+    ("ruleset", "", True),
+    ("prompt", "/silverback:rules off", rules_reply("off", "ruleset turned off.")),
+    ("ruleset", "", False),
+    ("prompt", "/silverback:guard", guard_reply("on", "on")),
+    ("command", "git push", True),
+    ("command", "printenv", None),
+    ("prompt", "/silverback:rules OFF", rules_reply("off", "ruleset is already off.")),
+    ("prompt", "/silverback:rules maybe", rules_reply("off", "usage: /silverback:rules [on|off].")),
+    ("prompt", "/silverback:rules on off", rules_reply("off", "usage: /silverback:rules [on|off].")),
+    ("prompt", "/silverback:rulesx on", None),
+    ("prompt", "<command-name>/rules</command-name><command-args>on</command-args>", None),
+    ("ruleset", "", False),
+    ("prompt", "<command-message>silverback:rules</command-message>\n"
+               "<command-name>/silverback:rules</command-name>\n"
+               "<command-args>on</command-args>", rules_reply("on", "ruleset turned on.")),
+    ("ruleset", "", True),
+]
+
+
+def plugin_rules_switch_turns_the_ruleset_off_and_on() -> list[str]:
+    runtimes, found = hook_runtimes()
+    with tempfile.TemporaryDirectory() as scratch:
+        root = plugin_copy(scratch)
+        for runtime in runtimes:
+            env = scratch_home(pathlib.Path(scratch) / f"home-{runtime[0]}")
+            for kind, text, expect in RULES_SWITCH_STEPS:
+                if kind == "prompt":
+                    run = run_hook(runtime, root, "guard-switch", [], json.dumps({"prompt": text}), env)
+                    if run.returncode != 0:
+                        found.append(f"{runtime[0]} guard-switch exited {run.returncode} on {text!r}: "
+                                     f"{run.stderr.strip()[:120]}")
+                        break
+                    if expect is None:
+                        if run.stdout.strip():
+                            found.append(f"{runtime[0]} guard-switch answered {text!r}, which is not the command")
+                        continue
+                    answer = json.loads(run.stdout) if run.stdout.strip() else {}
+                    if answer.get("decision") != "block" or answer.get("reason") != expect:
+                        found.append(f"{runtime[0]} guard-switch answered {text!r} with {run.stdout.strip()!r}")
+                elif kind == "ruleset":
+                    runs = {"load-core": run_hook(runtime, root, "load-core", ["1"], "", env),
+                            "subagent": run_hook(runtime, root, "subagent", [],
+                                                 json.dumps({"agent_type": "Explore"}), env),
+                            "compact": run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s"}), env)}
+                    for hook, run in runs.items():
+                        if run.returncode or bool(run.stdout.strip()) != expect:
+                            verdict = "printed nothing" if expect else "still printed the ruleset"
+                            found.append(f"{runtime[0]} {hook} {verdict} at that step (exit {run.returncode})")
+                else:
+                    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": text}})
+                    run = run_hook(runtime, root, "guard", [], payload, env)
+                    asked = run.returncode == 0 and bool(run.stdout.strip()) and json.loads(run.stdout)[
+                        "hookSpecificOutput"]["permissionDecision"] == "ask"
+                    if (run.returncode == 2) != (expect is None) or (expect is not None and asked != expect):
+                        found.append(f"{runtime[0]} guard changed its answer to {text!r} with the ruleset off "
+                                     f"(exit {run.returncode})")
+    return found
+
+
 def plugin_subagent_hook_carries_the_hard_rules() -> list[str]:
     # A subagent gets the sections it cannot learn from the parent's prompt,
     # exactly as the core states them, and nothing else, the same from every
@@ -858,9 +936,10 @@ def plugin_subagent_hook_carries_the_hard_rules() -> list[str]:
                        if section.startswith(SUBAGENT_SECTIONS))
     with tempfile.TemporaryDirectory() as scratch:
         root = plugin_copy(scratch)
+        env = scratch_home(pathlib.Path(scratch) / "home")
         notes = set()
         for runtime in runtimes:
-            run = run_hook(runtime, root, "subagent", [], json.dumps({"agent_type": "Explore"}))
+            run = run_hook(runtime, root, "subagent", [], json.dumps({"agent_type": "Explore"}), env)
             try:
                 output = json.loads(run.stdout)["hookSpecificOutput"]
                 note = output["additionalContext"]
@@ -979,10 +1058,11 @@ def plugin_compact_hook_keeps_the_task_state() -> list[str]:
     runtimes, found = hook_runtimes()
     with tempfile.TemporaryDirectory() as scratch:
         root = plugin_copy(scratch)
+        env = scratch_home(pathlib.Path(scratch) / "home")
         outputs = set()
         for runtime in runtimes:
-            claude = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "trigger": "auto"}))
-            codex = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "turn_id": "t"}))
+            claude = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "trigger": "auto"}), env)
+            codex = run_hook(runtime, root, "compact", [], json.dumps({"session_id": "s", "turn_id": "t"}), env)
             if claude.returncode or "Keep in the summary" not in claude.stdout:
                 found.append(f"{runtime[0]} compact hook printed {claude.stdout.strip()[:60]!r}")
             if codex.returncode or codex.stdout.strip():
@@ -1037,6 +1117,8 @@ GATES = [
      plugin_loads_whole_core),
     ("the plugin guard blocks what it names and nothing next to it", plugin_guard_blocks_what_it_names),
     ("/silverback:guard turns the push and recursive-delete prompts off and on", plugin_guard_switch_turns_prompts_off_and_on),
+    ("/silverback:rules turns the ruleset off and on and leaves the guards",
+     plugin_rules_switch_turns_the_ruleset_off_and_on),
     ("the plugin SubagentStart hook carries Boundaries, Security and Verification",
      plugin_subagent_hook_carries_the_hard_rules),
     ("the plugin file guard asks before an edit to a file that constrains the agent",

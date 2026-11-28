@@ -5,6 +5,8 @@
 # shapes the parent's reply and stays with the parent.
 set -euo pipefail
 cat > /dev/null || true
+# /silverback:rules off writes rules=off to the switch file: no ruleset then.
+if grep -qx 'rules=off' "$HOME/.silverback/guard" 2>/dev/null; then exit 0; fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 
 # Only git and the OS shell are assumed, so the JSON string is escaped by awk.

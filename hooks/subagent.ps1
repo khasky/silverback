@@ -3,6 +3,10 @@
 # scripts/lint.py checks that both scripts print the same context.
 $ErrorActionPreference = 'Stop'
 [void][Console]::In.ReadToEnd()
+# /silverback:rules off writes rules=off to the switch file: no ruleset then.
+$userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+$switchFile = Join-Path $userHome '.silverback/guard'
+if ((Test-Path -LiteralPath $switchFile) -and (Get-Content -LiteralPath $switchFile) -ccontains 'rules=off') { exit 0 }
 $root = Split-Path -Parent $PSScriptRoot
 $lines = [System.IO.File]::ReadAllText((Join-Path $root 'AGENTS.md')) -replace "`r`n", "`n" -split "`n"
 if ($lines[-1] -eq '') { $lines = $lines[0..($lines.Length - 2)] }

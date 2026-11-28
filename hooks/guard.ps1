@@ -122,10 +122,10 @@ $blockRules = @(
   @{ Pattern = '(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\s[^;&|]*[|]\s*(sudo\s+)?((ba|z|da)?sh|iex|Invoke-Expression|pwsh|powershell)(\s|$|[;&|)])|(iex|Invoke-Expression)\s*[(]\s*(irm|iwr|Invoke-RestMethod|Invoke-WebRequest)|(^|[^A-Za-z0-9_-])(ba|z)?sh\s+(-c\s+)?\S{0,3}(<|[$])[(]\s*(curl|wget)'
      Unless = ''
      Message = 'running a script downloaded from the network without reading it.' },
-  # The switch file turns ask rules off. Only the user changes it, with /silverback:guard.
+  # The switch file turns ask rules off. Only the user changes it, with /silverback:guard or /silverback:rules.
   @{ Pattern = '[/\\]\.silverback([/\\\s"'']|$)'
      Unless = ''
-     Message = 'touching the guard switch file. Only the user changes it, with /silverback:guard.' }
+     Message = 'touching the guard switch file. Only the user changes it, with /silverback:guard or /silverback:rules.' }
 )
 
 $issues = @()

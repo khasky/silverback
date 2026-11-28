@@ -135,10 +135,10 @@ block_rules=(
   '(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)[[:space:]][^;&|]*[|][[:space:]]*(sudo[[:space:]]+)?((ba|z|da)?sh|iex|Invoke-Expression|pwsh|powershell)([[:space:]]|$|[;&|)])|(iex|Invoke-Expression)[[:space:]]*[(][[:space:]]*(irm|iwr|Invoke-RestMethod|Invoke-WebRequest)|(^|[^[:alnum:]_-])(ba|z)?sh[[:space:]]+(-c[[:space:]]+)?[^[:space:]]{0,3}(<|[$])[(][[:space:]]*(curl|wget)'
   ''
   'running a script downloaded from the network without reading it.'
-  # The switch file turns ask rules off. Only the user changes it, with /silverback:guard.
+  # The switch file turns ask rules off. Only the user changes it, with /silverback:guard or /silverback:rules.
   '[/\\]\.silverback([/\\[:space:]"'"'"']|$)'
   ''
-  'touching the guard switch file. Only the user changes it, with /silverback:guard.'
+  'touching the guard switch file. Only the user changes it, with /silverback:guard or /silverback:rules.'
 )
 
 issues=()

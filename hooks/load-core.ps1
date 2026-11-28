@@ -5,6 +5,10 @@
 param([Parameter(Mandatory = $true)][int]$Part)
 
 $ErrorActionPreference = 'Stop'
+# /silverback:rules off writes rules=off to the switch file: no ruleset then.
+$userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+$switchFile = Join-Path $userHome '.silverback/guard'
+if ((Test-Path -LiteralPath $switchFile) -and (Get-Content -LiteralPath $switchFile) -ccontains 'rules=off') { exit 0 }
 $PartLimit = 7000
 $root = Split-Path -Parent $PSScriptRoot
 $lines = [System.IO.File]::ReadAllText((Join-Path $root 'AGENTS.md')) -replace "`r`n", "`n" -split "`n"

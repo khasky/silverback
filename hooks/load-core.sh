@@ -7,6 +7,8 @@
 set -euo pipefail
 
 part=${1:?usage: load-core.sh PART}
+# /silverback:rules off writes rules=off to the switch file: no ruleset then.
+if grep -qx 'rules=off' "$HOME/.silverback/guard" 2>/dev/null; then exit 0; fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 PART_LIMIT=7000
 

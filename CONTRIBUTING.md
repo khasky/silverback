@@ -98,6 +98,7 @@ Follow the repo's own `rules/markdown.md` — it applies to this repository firs
 - The verify hook (`hooks/verify.*`) sends a turn back once, never twice in a row (`stop_hook_active`), when an edit came after the last shell command, and each of its modes (`on`, `observe`, `off`) behaves as `/silverback:guard` reports it. The compact hook prints what the summary must keep, and nothing on Codex.
 - The plugin `SubagentStart` hook (`hooks/subagent.*`) gives a subagent the core's Boundaries, Security and Verification sections exactly as the core states them, under the inline limit.
 - The plugin's `SessionStart` parts (`hooks/load-core.*`) each stay under 7,500 characters, below Claude Code's inline limit for hook output and Codex's 2,500-token default for added context, rebuild `AGENTS.md` in order, print the same parts in every shell, and each has a hook: a part over the limit reaches the session as a two-kilobyte preview.
+- `/silverback:rules off` (`hooks/guard-switch.*`, `rules=off` in the switch file) silences `load-core`, `subagent` and `compact`, and every guard answers as it did with the ruleset on; `/silverback:rules on` brings the ruleset back.
 
 CI runs the script on Ubuntu and Windows, runs `evals/benchmark/run.py --selftest` (every benchmark scorer against scripted good and bad outcomes, no agent), and installs the checkout as a plugin into empty Claude Code and Codex homes and as a Gemini CLI extension, failing unless each lists it enabled. A manifest can pass every schema check and still fail to install.
 
